@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manish Sharma - Portfolio</title>
+    <link href="https://fonts.cdnfonts.com/css/the-chairman" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Loader -->
+    <div class="loader-container">
+        <div class="loader">
+            <img src="logo/logo.png" alt="Loading...">
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+        <!-- Header -->
+        <header>
+            <nav class="navbar">
+                <button class="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                <div class="navbar-logo">
+                    <img src="https://lh3.googleusercontent.com/d/1QdYHEYzLrwxSqQmgmWvg90ohTDPZbCy_" alt="Portfolio Logo" class="logo-image" onerror="console.log('Logo failed to load')">
+                </div>
+                <div class="nav-links">
+                    <a href="#about">About</a>
+                    <a href="#experience">Experience</a>
+                    <a href="#skills">Skills</a>
+                    <a href="#certifications">Certifications</a>
+                    <a href="#projects">Projects</a>
+                    <a href="#blog">Blog</a>
+                    <a href="#contact">Contact</a>
+                </div>
+            </nav>
+        </header>
+
+        <!-- Hero Section -->
+        <section class="hero" id="hero">
+            <div class="hero-content" id="heroContent">
+                <!-- Content will be loaded dynamically -->
+            </div>
+        </section>
+
+        <!-- About Section -->
+        <section id="about" class="section">
+            <div class="container">
+                <h2>About Me</h2>
+                <div id="aboutContent"></div>
+            </div>
+        </section>
+
+        <!-- Experience Section -->
+        <section id="experience" class="section">
+            <div class="container">
+                <h2>Experience</h2>
+                <div id="experienceContent"></div>
+            </div>
+        </section>
+
+        <!-- Skills Section -->
+        <section id="skills" class="section">
+            <div class="container">
+                <h2>Skills</h2>
+                <div id="skillsContent"></div>
+            </div>
+        </section>
+
+        <!-- Certifications Section -->
+        <section id="certifications" class="section">
+            <div class="container">
+                <h2>Certifications</h2>
+                <div id="certificationsContent"></div>
+            </div>
+        </section>
+
+        <!-- Projects Section -->
+        <section id="projects" class="section">
+            <div class="container">
+                <h2>Projects</h2>
+                <div id="projectsContent"></div>
+            </div>
+        </section>
+
+        <!-- Contact Section -->
+        <section id="contact" class="section">
+            <h2 class="section-title">Contact</h2>
+            <div class="contact-content">
+                <form id="contactForm" class="contact-form">
+                    <input type="text" id="contactName" name="name" placeholder="Name" required>
+                    <input type="email" id="contactEmail" name="email" placeholder="Email" required>
+                    <textarea id="contactMessage" name="message" placeholder="Message" required></textarea>
+                    <button type="submit" class="btn primary">Send Message</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Blog Section -->
+        <section id="blog" class="section">
+            <div class="container">
+                <h2>Blog</h2>
+                <div id="blogContent"></div>
+            </div>
+        </section>
+
+        <!-- Add More Skills Button -->
+        <button class="btn primary add-skill-btn">
+            <i class="fas fa-plus"></i> Add More Skills
+        </button>
+
+        <!-- Save Reminder Message -->
+        <div class="save-reminder">
+            <i class="fas fa-info-circle"></i>
+            <span>Remember to scroll down and click "Save Changes" to save your updates</span>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p class="copyright" data-original="Copyright © 2024 Manish Sharma" data-hover="🎨 Designed • 💻 Developed • 🛠️ Maintained by Manish Sharma">Copyright © 2024 Manish Sharma</p>
+        </footer>
+    </div>
+
+    <!-- Custom JS -->
+    <script type="module" src="js/firebase-config.js"></script>
+    <script type="module" src="js/main.js"></script>
+</body>
+</html> 

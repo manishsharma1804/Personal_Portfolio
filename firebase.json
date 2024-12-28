@@ -1,0 +1,33 @@
+{
+  "firestore": {
+    "rules": "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    // Helper function to check if user is authenticated\n    function isAuthenticated() {\n      return request.auth != null;\n    }\n    \n    // Helper function to check if user is signed in\n    function isSignedIn() {\n      return request.auth.uid != null;\n    }\n\n    // Content collection (profile, about, experience, skills)\n    match /content/{document} {\n      allow read: if true;  // Anyone can read\n      allow write: if isSignedIn();  // Only authenticated users can write\n    }\n    \n    // Projects collection\n    match /projects/{projectId} {\n      allow read: if true;\n      allow write: if isSignedIn();\n    }\n    \n    // Blog posts collection\n    match /blog/{postId} {\n      allow read: if true;\n      allow write: if isSignedIn();\n      \n      // Blog comments subcollection\n      match /comments/{commentId} {\n        allow read: if true;\n        allow write: if isSignedIn();\n      }\n    }\n    \n    // Messages collection\n    match /messages/{messageId} {\n      allow read: if isSignedIn();\n      allow create: if true;  // Anyone can send a message\n      allow delete: if isSignedIn();\n    }\n    \n    // Images collection\n    match /images/{imageId} {\n      allow read: if true;\n      allow write: if isSignedIn();\n      \n      // Allow access to image chunks\n      match /chunks/{chunkId} {\n        allow read: if true;\n        allow write: if isSignedIn();\n      }\n    }\n\n    // Certifications collection\n    match /certifications/{certId} {\n      allow read: if true;\n      allow write: if isSignedIn();\n    }\n\n    // Default rule - deny all other access\n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}",
+    "indexes": {}
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          },
+          {
+            "key": "Access-Control-Allow-Methods",
+            "value": "GET, POST, PUT, DELETE, OPTIONS"
+          },
+          {
+            "key": "Access-Control-Allow-Headers",
+            "value": "Content-Type, Authorization"
+          }
+        ]
+      }
+    ]
+  }
+} 

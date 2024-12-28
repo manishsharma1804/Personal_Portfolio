@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Portfolio</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/admindark.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Login Form -->
+    <div id="loginForm" class="login-container">
+        <div class="code-background"></div>
+        <div class="login-box">
+            <div class="login-logo">
+                <img src="logo/logo.png" alt="Logo">
+            </div>
+            <form id="adminLoginForm">
+                <div class="input-group">
+                    <input type="email" id="adminEmail" placeholder="Email" required>
+                </div>
+                <div class="input-group">
+                    <input type="password" id="adminPassword" placeholder="Password" required>
+                    <i class="fas fa-eye-slash toggle-password" onclick="togglePassword()"></i>
+                </div>
+                <button type="submit" class="btn primary">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="adminDashboard" class="dashboard-container" style="display: none;">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <img src="https://ui-avatars.com/api/?name=Manish+Sharma&background=4169E1&color=fff" alt="Admin" class="admin-avatar">
+                <div class="admin-info">
+                    <h3>Manish Sharma</h3>
+                    <p>Administrator</p>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li>
+                        <button onclick="showSection('dashboard')" class="nav-item active">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showSection('profile')" class="nav-item">
+                            <i class="fas fa-user"></i>
+                            <span>Profile</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showSection('about')" class="nav-item">
+                            <i class="fas fa-info-circle"></i>
+                            <span>About</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showSection('experience')" class="nav-item">
+                            <i class="fas fa-briefcase"></i>
+                            <span>Experience</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showSection('skills')" class="nav-item">
+                            <i class="fas fa-code"></i>
+                            <span>Skills</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showSection('certifications')" class="nav-item">
+                            <i class="fas fa-certificate"></i>
+                            <span>Certifications</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showSection('projects')" class="nav-item">
+                            <i class="fas fa-project-diagram"></i>
+                            <span>Projects</span>
+                        </button>
+                    </li>
+                    <li> 
+                        <button onclick="showSection('blog')" class="nav-item">
+                            <i class="fas fa-blog"></i>
+                            <span>Blog</span>
+                        </button>
+                    </li>
+                    <li>
+                    </li>
+                    <li>
+                        <button onclick="showSection('messages')" class="nav-item">
+                            <i class="fas fa-envelope"></i>
+                            <span>Messages</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button onclick="showSection('settings')" class="nav-item">
+                            <i class="fas fa-cog"></i>
+                            <span>Settings</span>
+                        </button>
+                    </li>
+                    <li>
+                        <button id="sidebarThemeToggle" class="nav-item">
+                            <i class="fas fa-moon"></i>
+                            <span>Toggle Theme</span>
+                        </button>
+                    </li>
+                </ul>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="logout()" class="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <div class="top-bar">
+                <button id="sidebarToggle" class="sidebar-toggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <a href="index.html" class="nav-logo">
+                    <img src="logo/logo.png" alt="Logo">
+                </a>
+                <div class="breadcrumb">
+                    <i class="fas fa-home"></i>
+                    <span>Dashboard</span>
+                </div>
+                <div class="top-bar-actions">
+                    <button class="btn-icon" title="Notifications">
+                        <i class="fas fa-bell"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Sections -->
+            <div class="content-wrapper">
+                <!-- Dashboard Section -->
+                <section id="dashboardSection" class="content-section">
+                    <div class="dashboard-stats">
+                        <div class="stat-card">
+                            <i class="fas fa-project-diagram"></i>
+                            <div class="stat-info">
+                                <h3>Projects</h3>
+                                <p id="projectCount">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-blog"></i>
+                            <div class="stat-info">
+                                <h3>Blog Posts</h3>
+                                <p id="blogCount">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-envelope"></i>
+                            <div class="stat-info">
+                                <h3>Messages</h3>
+                                <p id="messageCount">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <i class="fas fa-eye"></i>
+                            <div class="stat-info">
+                                <h3>Views</h3>
+                                <p id="viewCount">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="recent-activity">
+                        <h3>Recent Activity</h3>
+                        <div id="activityList" class="activity-list">
+                            <!-- Activity items will be loaded dynamically -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Profile Section -->
+                <section id="profileSection" class="content-section">
+                    <div class="section-header">
+                        <h2>Profile</h2>
+                    </div>
+                    <form id="profileForm" class="edit-form" style="display: none;">
+                        <div class="profile-image-container">
+                            <img id="profilePreview" src="https://ui-avatars.com/api/?name=Admin&background=4169E1&color=fff" alt="Profile Preview">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="profileName" class="form-control" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Profile Image URL (Google Drive)</label>
+                            <input type="url" id="profileImageUrl" class="form-control" placeholder="Enter Google Drive sharing link">
+                            <small class="form-text text-muted">Make sure the Google Drive link is publicly accessible</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Resume URL (Google Drive)</label>
+                            <input type="url" id="profileResumeUrl" class="form-control" placeholder="Enter Google Drive sharing link">
+                            <small class="form-text text-muted">Make sure the Google Drive link is publicly accessible</small>
+                            <div class="resume-preview">
+                                <a href="#" id="viewResumeBtn" class="btn secondary" target="_blank" style="display: none;">
+                                    <i class="fas fa-file-pdf"></i> View Resume
+                                </a>
+                                <span id="resumeFileName">No file chosen</span>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Titles</label>
+                            <div id="titlesList"></div>
+                            <button type="button" class="btn secondary" onclick="addTitleField()">
+                                <i class="fas fa-plus"></i> Add Title
+                            </button>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Company/Organization</label>
+                            <input type="text" id="profileCompany" class="form-control" placeholder="Enter your company/organization name">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Social Links</label>
+                            <div id="socialLinks"></div>
+                            <button type="button" class="btn secondary" onclick="addSocialLinkField()">
+                                <i class="fas fa-plus"></i> Add Social Link
+                            </button>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="submit" class="btn primary">Save Changes</button>
+                            <button type="button" class="btn" onclick="cancelProfileEdit()">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+
+                <!-- About Section -->
+                <section id="aboutSection" class="content-section">
+                    <div class="section-header">
+                        <h2>About</h2>
+                    </div>
+                    <form style="display: none;">
+                        <div class="form-group">
+                            <label>About Me</label>
+                            <div class="rich-text-editor" id="aboutEditor" contenteditable="true"></div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn primary">Save Changes</button>
+                            <button type="button" class="btn" onclick="cancelAboutEdit()">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+
+                <!-- Experience Section -->
+                <section id="experienceSection" class="content-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Experience</h2>
+                        <button class="btn primary" onclick="addNewExperience()">
+                            <i class="fas fa-plus"></i> Add Experience
+                        </button>
+                    </div>
+                    <div id="experienceList" class="items-list">
+                        <!-- Experience items will be loaded dynamically -->
+                    </div>
+                    <form id="experienceForm" class="edit-form" style="display: none;">
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input type="text" id="experienceTitle" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Company</label>
+                            <input type="text" id="experienceCompany" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Period</label>
+                            <div class="date-range">
+                                <input type="month" id="experienceStart" required>
+                                <span>to</span>
+                                <input type="month" id="experienceEnd">
+                                <label>
+                                    <input type="checkbox" id="experienceCurrent">
+                                    Current
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="experienceDescription" rows="4" required></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn primary">Save Experience</button>
+                            <button type="button" class="btn secondary" onclick="cancelExperience()">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+
+                <!-- Projects Section -->
+                <section id="projectsSection" class="content-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Projects</h2>
+                        <button class="btn primary" onclick="showModal('projectModal')">Add Project</button>
+                    </div>
+                    <div id="projectsList">
+                        <!-- Project items will be loaded dynamically -->
+                    </div>
+                </section>
+
+                <!-- Blog Section -->
+                <section id="blogSection" class="content-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Blog Posts</h2>
+                        <button class="btn primary" onclick="showModal('blogModal')">Add Post</button>
+                    </div>
+                    <div id="blogList">
+                        <!-- Blog posts will be loaded dynamically -->
+                    </div>
+                </section>
+
+                <!-- Messages Section -->
+                <section id="messagesSection" class="content-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Messages</h2>
+                    </div>
+                    <div id="messagesList" class="messages-list">
+                        <!-- Messages will be loaded dynamically -->
+                    </div>
+                </section>
+
+                <!-- Settings Section -->
+                <section id="settingsSection" class="content-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Settings</h2>
+                    </div>
+                    <form id="settingsForm" class="settings-form">
+                        <div class="form-group">
+                            <label>Site Title</label>
+                            <input type="text" id="siteTitle" value="Manish Sharma - Portfolio">
+                        </div>
+                        <div class="form-group">
+                            <label>Theme Color</label>
+                            <input type="color" id="themeColor" value="#4169E1">
+                        </div>
+                        <div class="form-group">
+                            <label>Email Notifications</label>
+                            <div class="checkbox-group">
+                                <label>
+                                    <input type="checkbox" id="notifyMessages" checked>
+                                    New Messages
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="notifyComments">
+                                    Blog Comments
+                                </label>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn primary">Save Settings</button>
+                    </form>
+                </section>
+
+                <!-- Skills Section -->
+                <section id="skillsSection" class="content-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Skills</h2>
+                        <button class="btn primary" onclick="showAddSkillDialog()">
+                            <i class="fas fa-plus"></i> Add Skill
+                        </button>
+                    </div>
+                    <div id="skillsDisplay" class="skills-categories">
+                        <!-- Skills will be loaded dynamically -->
+                    </div>
+                    <form id="skillsForm" class="edit-form" style="display: none;">
+                        <div id="skillCategories" class="skill-categories-edit">
+                            <!-- Skill categories will be added here -->
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn primary">Save Changes</button>
+                            <button type="button" class="btn secondary" onclick="cancelSkillsEdit()">Cancel</button>
+                        </div>
+                    </form>
+                </section>
+
+                <!-- Certifications Section -->
+                <section id="certificationsSection" class="content-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Certifications</h2>
+                        <button class="btn primary" onclick="addNewCertification()">Add Certification</button>
+                    </div>
+                    
+                    <!-- Certifications Display -->
+                    <div id="certificationsDisplay">
+                        <div id="certificationsList">
+                            <!-- Certifications will be loaded dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Certifications Form -->
+                    <div id="certificationsForm" style="display: none;">
+                        <form id="certificationForm" class="edit-form">
+                            <div class="form-group">
+                                <label for="certificationTitle">Certification Title</label>
+                                <input type="text" id="certificationTitle" required placeholder="e.g., AWS Solutions Architect">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="certificationOrg">Issuing Organization</label>
+                                <input type="text" id="certificationOrg" required placeholder="e.g., Amazon Web Services">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="certificationDate">Issue Date</label>
+                                <input type="month" id="certificationDate" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="certificationExpiry">Expiry Date</label>
+                                <input type="month" id="certificationExpiry">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="certificationId">Certification ID</label>
+                                <input type="text" id="certificationId" placeholder="e.g., ABC123XYZ">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="certificationUrl">Credential URL</label>
+                                <input type="url" id="certificationUrl" placeholder="Enter credential URL">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="certificationSkills">Skills (comma separated)</label>
+                                <input type="text" id="certificationSkills" placeholder="e.g., JavaScript, React, Node.js">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Files (Images & PDFs)</label>
+                                <div id="fileLinks" class="file-links-container"></div>
+                                <button type="button" class="btn secondary" onclick="addFileLink()">Add File Link</button>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn primary">Save Certification</button>
+                                <button type="button" class="btn secondary" onclick="cancelCertification()">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- Skills Modal -->
+                <div id="skillModal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Add Skill</h3>
+                            <button class="close" onclick="closeModal('skillModal')">&times;</button>
+                        </div>
+                        <form id="skillForm">
+                            <div class="form-group">
+                                <label>Category</label>
+                                <input type="text" id="skillCategory" required placeholder="e.g., Programming Languages, Frameworks, etc.">
+                            </div>
+                            <div class="form-group">
+                                <label>Skill Name</label>
+                                <input type="text" id="skillName" required placeholder="e.g., JavaScript, React, etc.">
+                            </div>
+                            <div class="form-group">
+                                <label>Proficiency Level (1-100%)</label>
+                                <div class="range-input">
+                                    <input type="range" id="skillLevel" min="1" max="100" value="50" oninput="handleSkillLevelChange(this)">
+                                    <span id="skillLevelValue">50%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Icon (Font Awesome Class)</label>
+                                <div class="icon-input">
+                                    <input type="text" id="skillIcon" placeholder="e.g., fab fa-js, fab fa-react" oninput="handleSkillIconChange(this)">
+                                    <i id="iconPreview" class=""></i>
+                                </div>
+                                <small>Visit <a href="https://fontawesome.com/icons" target="_blank">Font Awesome</a> to find icons</small>
+                            </div>
+                            <button type="submit" class="btn primary">Save Skill</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Blog Comments Section -->
+                <div id="blogCommentsSection" class="content-section">
+                    <div class="breadcrumb">
+                        <span>Blog Comments</span>
+                    </div>
+                    <div class="section-content">
+                        <div id="blogCommentsList" class="comments-list">
+                            <!-- Comments will be loaded here dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Project Modal -->
+    <div id="projectModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Project</h3>
+                <button class="close">&times;</button>
+            </div>
+            <form id="projectForm">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="projectTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="projectDescription" rows="4" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Technologies</label>
+                    <input type="text" id="projectTechnologies" placeholder="Comma-separated list">
+                </div>
+                <div class="form-group">
+                    <label>Project Image</label>
+                    <input type="file" id="projectImage" accept="image/*">
+                </div>
+                <div class="form-group">
+                    <label>Project URL</label>
+                    <input type="url" id="projectLink">
+                </div>
+                <div class="form-group">
+                    <label>GitHub URL</label>
+                    <input type="url" id="projectGithub">
+                </div>
+                <button type="submit" class="btn primary">Save Project</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Blog Post Modal -->
+    <div id="blogModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Blog Post</h3>
+                <button class="close">&times;</button>
+            </div>
+            <form id="blogForm">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="blogTitle" required>
+                </div>
+                <div class="form-group">
+                    <label>Content</label>
+                    <textarea id="blogContent" rows="10" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <input type="text" id="blogTags" placeholder="Comma-separated list">
+                </div>
+                <div class="form-group">
+                    <label>Featured Image</label>
+                    <input type="file" id="blogImage" accept="image/*">
+                </div>
+                <button type="submit" class="btn primary">Publish Post</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom JS -->
+    <script type="module" src="js/firebase-config.js"></script>
+    <script type="module" src="js/admin.js"></script>
+</body>
+</html> 
