@@ -137,8 +137,8 @@
 .dashboard-container {
     position: relative;
     width: 100%;
-    min-height: 100vh;
-    display: flex;
+    height: 100vh;
+    overflow: hidden;
 }
 
 /* Sidebar */
@@ -245,9 +245,12 @@
 
 /* Main Content */
 .main-content {
-    flex: 1;
-    margin-left: var(--sidebar-width);
-    min-height: 100vh;
+    position: fixed;
+    top: 0;
+    left: var(--sidebar-width);
+    right: 0;
+    height: 100vh;
+    overflow-y: auto;
     background: var(--background-color);
     padding: 1.5rem;
 }
@@ -586,7 +589,7 @@ body.modal-open {
     }
 
     .main-content {
-        margin-left: 0;
+        left: 0;
     }
 
     .sidebar-toggle {
@@ -2320,5 +2323,40 @@ input[type="color"] {
         position: absolute;
         bottom: 10px;
         right: 10px;
+    }
+} 
+
+@media (max-width: 768px) {
+    .certification-skills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        width: 100%;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        word-break: break-word;
+    }
+
+    .certification-item {
+        padding: 15px;
+        overflow: hidden;
+    }
+
+    .details-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .mobile-order-wrapper {
+        width: 100%;
+    }
+
+    .certification-skills span {
+        font-size: 0.9em;
+        max-width: 100%;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        word-break: break-word;
     }
 } 
