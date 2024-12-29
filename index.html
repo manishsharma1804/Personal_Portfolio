@@ -3,7 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manish Sharma - Portfolio</title>
+    <title>Portfolio</title>
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" href="logo/favicon/favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="logo/favicon/favicon.svg">
+    <link rel="shortcut icon" href="logo/favicon/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="logo/favicon/apple-touch-icon.png">
+    <meta name="description" content="Portfolio">
+    <link rel="manifest" href="logo/favicon/site.webmanifest">
+    <!-- Fonts and Styles -->
     <link href="https://fonts.cdnfonts.com/css/the-chairman" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -91,7 +99,7 @@
         <section id="contact" class="section">
             <h2 class="section-title">Contact</h2>
             <div class="contact-content">
-                <form id="contactForm" class="contact-form">
+                <form id="contactForm" class="contact-form" novalidate>
                     <input type="text" id="contactName" name="name" placeholder="Name" required>
                     <input type="email" id="contactEmail" name="email" placeholder="Email" required>
                     <textarea id="contactMessage" name="message" placeholder="Message" required></textarea>
@@ -108,20 +116,10 @@
             </div>
         </section>
 
-        <!-- Add More Skills Button -->
-        <button class="btn primary add-skill-btn">
-            <i class="fas fa-plus"></i> Add More Skills
-        </button>
-
-        <!-- Save Reminder Message -->
-        <div class="save-reminder">
-            <i class="fas fa-info-circle"></i>
-            <span>Remember to scroll down and click "Save Changes" to save your updates</span>
-        </div>
 
         <!-- Footer -->
         <footer>
-            <p class="copyright" data-original="Copyright © 2024 Manish Sharma" data-hover="🎨 Designed • 💻 Developed • 🛠️ Maintained by Manish Sharma">Copyright © 2024 Manish Sharma</p>
+            <p class="copyright" data-original="© ${new Date().getFullYear()} Manish Sharma. All rights reserved." data-hover="🎨 Designed • 💻 Developed • 🛠️ Maintained by <a href='https://www.instagram.com/me.manish18/' target='_blank' style='text-decoration: none; color: inherit;'>Manish Sharma</a>">© ${new Date().getFullYear()} Manish Sharma. All rights reserved.</p>
         </footer>
     </div>
 

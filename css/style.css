@@ -3200,7 +3200,6 @@ body {
     -moz-osx-font-smoothing: grayscale;
     will-change: scroll-position;
     backface-visibility: hidden;
-    transform: translateZ(0);
     perspective: 1000;
 }
 

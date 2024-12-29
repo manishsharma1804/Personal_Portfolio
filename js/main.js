@@ -169,6 +169,45 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
+// Function to get random sending message
+function getRandomSendingMessage() {
+    const messages = [
+        '<i class="fas fa-paper-plane fa-spin"></i> Sending your message...',
+        '<i class="fas fa-spinner fa-spin"></i> Connecting...',
+        '<i class="fas fa-circle-notch fa-spin"></i> Just a moment...',
+        '<i class="fas fa-sync fa-spin"></i> Processing...',
+        '<i class="fas fa-envelope fa-spin"></i> Delivering...',
+        '<i class="fas fa-clock fa-spin"></i> Almost there...',
+        '<i class="fas fa-satellite-dish fa-spin"></i> Transmitting...',
+        '<i class="fas fa-broadcast-tower fa-spin"></i> Broadcasting...'
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+}
+
+// Track secret admin access
+let adminAccessCounter = 0;
+let lastClickTime = Date.now();
+const RESET_TIMEOUT = 10000; // Reset counter after 10 seconds of inactivity
+
+// Function to check admin access
+function checkAdminAccess(message) {
+    const currentTime = Date.now();
+    if (currentTime - lastClickTime > RESET_TIMEOUT) {
+        adminAccessCounter = 0;
+    }
+    lastClickTime = currentTime;
+
+    if (message.toLowerCase() === 'hello! its admin') {
+        adminAccessCounter++;
+        if (adminAccessCounter === 5) {
+            return true;
+        }
+    } else {
+        adminAccessCounter = 0;
+    }
+    return false;
+}
+
 // Function to handle contact form submission
 async function handleContactSubmit(event) {
     event.preventDefault();
@@ -185,20 +224,29 @@ async function handleContactSubmit(event) {
         showNotification('Form error: Required fields not found', 'error');
         return;
     }
+
+    const message = messageInput.value.trim();
+    
+    // Check for admin access without validation
+    if (message.toLowerCase() === 'hello! its admin') {
+        // Blur any focused input to hide mobile keyboard
+        document.activeElement.blur();
+        
+        if (checkAdminAccess(message)) {
+            activateSecretCode();
+            return;
+        }
+        // Don't show validation error for admin attempts
+        return;
+    }
     
     const originalButtonText = submitButton.innerHTML;
     
     try {
-        // Disable submit button and show loading state
-        submitButton.disabled = true;
-        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
-        
-        // Get form data
+        // Validate form data first
         const name = nameInput.value.trim();
         const email = emailInput.value.trim();
-        const message = messageInput.value.trim();
         
-        // Validate form data
         if (!name || !email || !message) {
             throw new Error('Please fill in all fields');
         }
@@ -208,6 +256,19 @@ async function handleContactSubmit(event) {
         if (!emailRegex.test(email)) {
             throw new Error('Please enter a valid email address');
         }
+
+        // Disable submit button and show random loading state with transition
+        submitButton.disabled = true;
+        submitButton.style.transition = 'opacity 0.3s ease';
+        submitButton.style.opacity = '0';
+        
+        // Wait for fade out
+        await new Promise(resolve => setTimeout(resolve, 300));
+        submitButton.innerHTML = getRandomSendingMessage();
+        submitButton.style.opacity = '1';
+        
+        // Minimum display time for the sending message
+        const sendingStartTime = Date.now();
         
         // Create message document
         const messageData = {
@@ -221,8 +282,26 @@ async function handleContactSubmit(event) {
         const messagesRef = collection(db, 'messages');
         await addDoc(messagesRef, messageData);
         
+        // Ensure sending message shows for at least 1.5 seconds
+        const elapsedTime = Date.now() - sendingStartTime;
+        if (elapsedTime < 1500) {
+            await new Promise(resolve => setTimeout(resolve, 1500 - elapsedTime));
+        }
+        
+        // Get first name or appropriate title
+        const nameParts = name.split(' ');
+        let displayName = name;
+        if (nameParts.length > 1) {
+            const firstPart = nameParts[0].toUpperCase();
+            if (['MR', 'DR', 'MS', 'MRS', 'PROF'].includes(firstPart)) {
+                displayName = nameParts[1];
+            } else {
+                displayName = nameParts[0];
+            }
+        }
+        
         // Show success message
-        showNotification('Message sent successfully!', 'success');
+        showNotification(`Thank you, ${displayName}! I will contact you shortly.`, 'success');
         
         // Reset form
         form.reset();
@@ -232,18 +311,48 @@ async function handleContactSubmit(event) {
         showNotification(error.message || 'Failed to send message. Please try again.', 'error');
         
     } finally {
-        // Restore submit button state
+        // Restore submit button state with transition
         if (submitButton) {
-            submitButton.disabled = false;
+            submitButton.style.opacity = '0';
+            await new Promise(resolve => setTimeout(resolve, 300));
             submitButton.innerHTML = originalButtonText;
+            submitButton.disabled = false;
+            submitButton.style.opacity = '1';
         }
     }
 }
 
-// Add contact form submit handler only if form exists
+// Add contact form submit handler and mobile touch handlers
 const contactForm = document.querySelector('#contactForm');
 if (contactForm) {
+    const submitButton = contactForm.querySelector('button[type="submit"]');
+    const messageInput = contactForm.querySelector('#contactMessage');
+    
+    // Regular form submission
     contactForm.addEventListener('submit', handleContactSubmit);
+    
+    // Touch event handlers for mobile
+    if (submitButton) {
+        submitButton.addEventListener('touchstart', (e) => {
+            if (messageInput.value.trim().toLowerCase() === 'hello! its admin') {
+                touchStartTime = Date.now();
+                longPressTimer = setTimeout(() => {
+                    // Trigger admin check on long press
+                    handleContactSubmit(new Event('submit'));
+                }, LONG_PRESS_DURATION);
+            }
+        });
+
+        submitButton.addEventListener('touchend', () => {
+            clearTimeout(longPressTimer);
+            touchStartTime = 0;
+        });
+
+        submitButton.addEventListener('touchcancel', () => {
+            clearTimeout(longPressTimer);
+            touchStartTime = 0;
+        });
+    }
 }
 
 // Function to show notification
@@ -379,7 +488,7 @@ async function loadContent() {
                                     <div class="social-links">
                                         ${profileData.socialLinks.map(social => `
                                             <a href="${social.url}" target="_blank" class="social-link">
-                                                <i class="fab fa-${social.platform}"></i>
+                                                <i class="${social.icon}" style="color: ${social.color}"></i>
                                             </a>
                                         `).join('')}
                                     </div>
@@ -451,7 +560,7 @@ async function loadContent() {
                                 <div class="social-links-section">
                                     ${profileData?.socialLinks?.map(social => `
                                         <a href="${social.url}" target="_blank" class="social-link">
-                                            <i class="fab fa-${social.platform}"></i>
+                                            <i class="${social.icon}" style="color: ${social.color}"></i>
                                         </a>
                                     `).join('') || ''}
                                 </div>
@@ -773,8 +882,47 @@ function convertGoogleDriveUrl(url) {
     return url;
 }
 
-// Initialize content loading
-document.addEventListener('DOMContentLoaded', loadContent); 
+// Function to convert string to Title Case
+function toTitleCase(str) {
+    return str.split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+}
+
+// Function to update document title and meta
+async function updateTitleAndMeta() {
+    try {
+        const profileData = await loadPublicProfileData();
+        if (profileData?.name) {
+            // Convert name to Title Case
+            const formattedName = toTitleCase(profileData.name);
+            
+            // Update document title
+            document.title = `${formattedName} - Portfolio`;
+            
+            // Update meta name
+            const metaName = document.querySelector('meta[name="description"]');
+            if (metaName) {
+                metaName.setAttribute('name', formattedName);
+                metaName.setAttribute('content', `${formattedName}-Portfolio`);
+            } else {
+                // Create meta if it doesn't exist
+                const meta = document.createElement('meta');
+                meta.setAttribute('name', formattedName);
+                meta.setAttribute('content', `${formattedName}-Portfolio`);
+                document.head.appendChild(meta);
+            }
+        }
+    } catch (error) {
+        console.warn('Error updating title and meta:', error);
+    }
+}
+
+// Initialize content loading and update title/meta
+document.addEventListener('DOMContentLoaded', async () => {
+    await updateTitleAndMeta();
+    loadContent();
+});
 
 // Add event listener for expand buttons after content is loaded
 document.addEventListener('click', function(e) {
@@ -820,11 +968,29 @@ document.addEventListener('DOMContentLoaded', function() {
     // Footer hover effect
     const copyright = document.querySelector('.copyright');
     if (copyright) {
+        // Get profile data for name
+        loadPublicProfileData().then(profileData => {
+            // Format name to title case (first letter capital)
+            const formatName = (name) => {
+                return name.split(' ')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(' ');
+            };
+            const name = formatName(profileData?.name || 'Manish Sharma');
+            const currentYear = new Date().getFullYear();
+            const originalText = `© ${currentYear} ${name}. All rights reserved.`;
+            const hoverText = `🎨 Designed • 💻 Developed • 🛠️ Maintained by <a href='https://www.instagram.com/me.manish18/' target='_blank' style='text-decoration: none; color: inherit;'>Manish Sharma</a>`;
+            
+            copyright.setAttribute('data-original', originalText);
+            copyright.setAttribute('data-hover', hoverText);
+            copyright.innerHTML = originalText;
+        });
+
         copyright.addEventListener('mouseenter', () => {
-            copyright.textContent = copyright.getAttribute('data-hover');
+            copyright.innerHTML = copyright.getAttribute('data-hover');
         });
         copyright.addEventListener('mouseleave', () => {
-            copyright.textContent = copyright.getAttribute('data-original');
+            copyright.innerHTML = copyright.getAttribute('data-original');
         });
     }
 }); 
@@ -1112,58 +1278,195 @@ function showLetterInput() {
 }
 
 // Function to activate secret code
-function activateSecretCode() {
-    secretCodePosition = 0;
-    
-    const flash = document.createElement('div');
-    flash.style.cssText = `
+async function activateSecretCode() {
+    try {
+        await showAdminRedirectLoader();
+        window.location.href = 'admin.html';
+    } catch (error) {
+        console.error('Error during login:', error);
+    }
+}
+
+// Function to show loader before admin redirection
+async function showAdminRedirectLoader() {
+    // Create container with solid background
+    const adminLoaderContainer = document.createElement('div');
+    adminLoaderContainer.className = 'admin-loader-container';
+    adminLoaderContainer.style.cssText = `
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.85);
-        z-index: 9999;
         display: flex;
-        align-items: center;
+        flex-direction: column;
         justify-content: center;
-        opacity: 0;
-        transition: opacity 0.3s ease-in;
+        align-items: center;
+        background-color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#1a1a1a' : '#ffffff'} !important;
+        z-index: 9999999999;
+        opacity: 1;
+        transition: opacity 0.5s ease-out;
     `;
-    
-    const message = document.createElement('div');
-    message.style.cssText = `
-        color: #fff;
-        font-size: 2.5rem;
-        font-weight: bold;
+
+    // Create loader box with glass effect
+    const loaderBox = document.createElement('div');
+    loaderBox.style.cssText = `
+        background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'rgba(37, 37, 37, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
+        border-radius: 20px;
+        padding: 2rem;
         text-align: center;
-        transform: scale(0.8);
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        transform: scale(0.9);
         opacity: 0;
-        transition: all 0.5s ease-out;
+        transition: all 0.3s ease-out;
     `;
-    message.innerHTML = `
-        <div style="margin-bottom: 10px;">👋 Hello Manish!</div>
-        <div style="font-size: 1.5rem; color: #4169E1;">Welcome to Admin Panel</div>
+
+    // Create and style the loader
+    const adminLoader = document.createElement('div');
+    adminLoader.className = 'admin-loader';
+    adminLoader.style.cssText = `
+        width: 80px;
+        height: 80px;
+        position: relative;
+        margin: 0 auto 1.5rem;
+        animation: adminLoaderPulse 2s ease-in-out infinite;
     `;
-    
-    flash.appendChild(message);
-    document.body.appendChild(flash);
-    
-    // Trigger animations
+
+    const loaderImg = document.createElement('img');
+    loaderImg.src = 'logo/logo.png';
+    loaderImg.alt = 'Loading...';
+    loaderImg.style.cssText = `
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        filter: ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'brightness(100)' : 'brightness(0)'};
+        transition: filter 0.3s ease;
+    `;
+
+    // Create message container
+    const messageContainer = document.createElement('div');
+    messageContainer.innerHTML = `
+        <div style="
+            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#1a1a1a'};
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        ">Welcome to Admin Panel!</div>
+        <div id="loaderMessage" style="
+            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#cccccc' : '#666666'};
+            font-size: 1.1rem;
+        ">Preparing your workspace...</div>
+        <div class="progress-bar" style="
+            width: 200px;
+            height: 4px;
+            background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#333' : '#eee'};
+            margin: 1.5rem auto 0;
+            border-radius: 2px;
+            overflow: hidden;
+        ">
+            <div class="progress" style="
+                width: 100%;
+                height: 100%;
+                background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#8bb9dd' : '#2a6496'};
+                transform: translateX(-100%);
+                animation: progress 5s linear forwards;
+            "></div>
+        </div>
+    `;
+
+    // Add animation keyframes
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = `
+        @keyframes adminLoaderPulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes progress {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(0); }
+        }
+    `;
+    document.head.appendChild(styleSheet);
+
+    // Assemble the loader
+    adminLoader.appendChild(loaderImg);
+    loaderBox.appendChild(adminLoader);
+    loaderBox.appendChild(messageContainer);
+    adminLoaderContainer.appendChild(loaderBox);
+    document.body.appendChild(adminLoaderContainer);
+
+    // Messages for loading state
+    const loadingMessages = [
+        "Preparing your workspace...",
+        "Setting up admin access...",
+        "Almost there...",
+        "Redirecting to admin panel..."
+    ];
+
+    // Show loader with animation
     requestAnimationFrame(() => {
-        flash.style.opacity = '1';
-        message.style.opacity = '1';
-        message.style.transform = 'scale(1)';
+        loaderBox.style.transform = 'scale(1)';
+        loaderBox.style.opacity = '1';
     });
-    
-    // Redirect after animation
-    setTimeout(() => {
-        flash.style.opacity = '0';
-        message.style.transform = 'scale(1.2)';
-        message.style.opacity = '0';
-        setTimeout(() => {
-            flash.remove();
-            window.location.href = 'admin.html';
-        }, 300);
-    }, 1000);
-} 
+
+    // Cycle through loading messages
+    let messageIndex = 0;
+    const messageInterval = setInterval(() => {
+        const messageElement = document.getElementById('loaderMessage');
+        if (messageElement) {
+            messageElement.style.opacity = '0';
+            setTimeout(() => {
+                messageElement.textContent = loadingMessages[messageIndex];
+                messageElement.style.opacity = '1';
+                messageIndex = (messageIndex + 1) % loadingMessages.length;
+            }, 200);
+        }
+    }, 2000);
+
+    // Return a promise that resolves when loading is done
+    return new Promise((resolve) => {
+        const minLoadTime = 5000; // Minimum 5 seconds
+        const startTime = Date.now();
+
+        // Function to check if content is loaded
+        const checkContentLoaded = () => {
+            const elapsedTime = Date.now() - startTime;
+            const remainingTime = Math.max(0, minLoadTime - elapsedTime);
+
+            // If minimum time has passed
+            if (elapsedTime >= minLoadTime) {
+                clearInterval(messageInterval);
+                
+                // Fade out loader
+                loaderBox.style.transform = 'scale(0.9)';
+                loaderBox.style.opacity = '0';
+                setTimeout(() => {
+                    adminLoaderContainer.style.opacity = '0';
+                    setTimeout(() => {
+                        adminLoaderContainer.remove();
+                        styleSheet.remove();
+                        resolve();
+                    }, 300);
+                }, 200);
+            } else {
+                // Check again in 100ms
+                setTimeout(checkContentLoaded, 100);
+            }
+        };
+
+        // Start checking
+        checkContentLoaded();
+    });
+}
+
+// Update the secret key handler to use the loader
+document.addEventListener('keydown', async function(event) {
+    if (event.key === 'a' && event.ctrlKey && event.shiftKey) {
+        event.preventDefault();
+        await showAdminRedirectLoader();
+        window.location.href = 'admin.html';
+    }
+}); 

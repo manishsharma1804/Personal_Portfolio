@@ -1,5 +1,5 @@
 // Import Firebase functions and objects
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 import {
     auth,
@@ -35,18 +35,42 @@ import {
 
 // Theme toggle functionality
 function initTheme() {
-    const theme = localStorage.getItem('theme') || 'light';
+    // First check if user has a stored preference
+    const storedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    function setTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     updateThemeIcon(theme);
 }
 
-function toggleTheme() {
-    const currentTheme = document.documentElement.getAttribute('data-theme');
-    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    // Handle system theme changes
+    function handleSystemThemeChange(e) {
+        // Only update if user hasn't set a manual preference
+        if (!localStorage.getItem('theme')) {
+            const newTheme = e.matches ? 'dark' : 'light';
+            setTheme(newTheme);
+        }
+    }
+
+    // Remove any old listeners first
+    try {
+        prefersDark.removeEventListener('change', handleSystemThemeChange);
+    } catch (e) {
+        // Ignore if no listener existed
+    }
+
+    // Add the listener for system theme changes
+    prefersDark.addEventListener('change', handleSystemThemeChange);
     
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-    updateThemeIcon(newTheme);
+    if (storedTheme) {
+        // Use stored preference if available
+        setTheme(storedTheme);
+    } else {
+        // Otherwise use device preference
+        const theme = prefersDark.matches ? 'dark' : 'light';
+        setTheme(theme);
+    }
 }
 
 function updateThemeIcon(theme) {
@@ -56,9 +80,23 @@ function updateThemeIcon(theme) {
     }
 }
 
-// Initialize theme when DOM is loaded
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme); // Store user preference
+    updateThemeIcon(newTheme);
+}
+
+// Initialize theme immediately and on DOM load
+initTheme(); // Initialize immediately for login page
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Re-initialize theme to ensure everything is set correctly
     initTheme();
+    
+    // Add click event listener to theme toggle button
     const themeToggle = document.getElementById('sidebarThemeToggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
@@ -853,7 +891,27 @@ onAuthStateChanged(auth, (user) => {
         adminDashboard.style.display = 'block';
         initializeSections();
         loadAllContent();
-        updateSidebarProfile(); // Add this line to update sidebar profile
+        updateSidebarProfile();
+        
+        // Add logout event listeners
+        const logoutBtn = document.querySelector('.btn-logout');
+        const logoutMobile = document.querySelector('.nav-item.logout-mobile');
+        
+        if (logoutBtn) {
+            logoutBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                logout();
+            };
+        }
+        
+        if (logoutMobile) {
+            logoutMobile.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                logout();
+            };
+        }
     } else {
         // User is signed out
         loginForm.style.display = 'flex';
@@ -939,408 +997,12 @@ async function loadAllContent() {
         currentPosts = posts || [];
         currentMessages = messages || [];
 
-        // Get dashboard section
-        const dashboardSection = document.getElementById('dashboardSection');
-        dashboardSection.innerHTML = '';
-
-        // Create new container for Gita quotes first
-        const gitaContainer = document.createElement('div');
-        gitaContainer.id = 'gitaQuotes';
-        dashboardSection.appendChild(gitaContainer);
-
-        const gitaQuotes = [
-            {
-                sanskrit: "कर्मण्येवाधिकारस्ते मा फलषु कदाचन।\nमा कर्मफलहेतुर्भूर्मा ते सङ्गोऽस्त्वक्मणि॥",
-                hindi: "कर्म करने मात्र में तुम्हरा अधिकार है, फलों में कभी नहीं।\nकर्मफल का हेतु म बनो, अकर्म में भी तुम्हारी आसक्ति न हो॥",
-                english: "You have the right to work only, but never to its fruits.\nLet not the fruits of action be your motive, nor let your attachment be to inaction."
-            },
-            {
-                sanskrit: "योगस्थः कुरु कर्माण सङ्गं त्यक्त्वा धनञ्जय।\nसिद्ध्यसिदध्योः समो त्वा समत्वं योग उच्यते॥",
-                hindi: "हे धनंजय! आसकति को त्यागकर, सिद्धि और असद्धि में समान भाव रखकर योगस्थ हकर कर्म करो।\nइस समत्व को ही योग कहते हैं॥",
-                english: "Perform your duties established in yoga, renouncing attachment, O Arjuna,\nBeing indifferent to success and failure. Such equanimity is called yoga."
-            },
-            {
-                sanskrit: "यदा यदा हि ध्मस्य ग्लानिर्भवति भारत।\nअभ्युतथानमधर्मस्य तदात्मनं सृजाम्यहम्",
-                hindi: "हे भारत! जब-जब धर्म क हानि और अधर्म की ृद्धि होती है,\nतब-तब मैं स्वयं को प्रकट करता हूँ॥",
-                english: "Whenever there is decay of righteousness and rise of unrighteousness,\nO Bharata (Arjuna), then I manifest Myself."
-            }
-        ];
-
-        // Randomly select a quote
-        const randomQuote = gitaQuotes[Math.floor(Math.random() * gitaQuotes.length)];
-
-        // Add Sanskrit font
-        const fontLink = document.createElement('link');
-        fontLink.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;700&display=swap';
-        document.head.appendChild(fontLink);
-
-        // Add styles
-        const style = document.createElement('style');
-        style.textContent = `
-            #gitaQuotes {
-                width: 100%;
-                padding: 1rem;
-                position: relative;
-                z-index: 1;
-                margin: 0 auto;
-            }
-            .sidebar {
-                z-index: 9999 !important;
-            }
-            .sidebar.active {
-                transform: translateX(0);
-            }
-            .modal {
-                z-index: 10000;
-            }
-            .gita-quote {
-                width: 100%;
-                text-align: center;
-                padding: 3rem 2rem;
-                background: #fff;
-                border-radius: 15px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                position: relative;
-                display: flex;
-                flex-direction: column;
-                gap: 2rem;
-                margin-bottom: 1.5rem;
-            }
-            .hindi-text {
-                font-family: 'Noto Sans Devanagari', sans-serif;
-                font-size: clamp(1rem, 2vw, 1.4rem);
-                color: #444;
-                line-height: 1.8;
-                order: 1;
-                max-width: 800px;
-                margin: 0 auto;
-            }
-            .sanskrit-text {
-                font-family: 'Noto Sans Devanagari', sans-serif;
-                font-size: clamp(1.8rem, 4vw, 2.8rem);
-                line-height: 2;
-                font-weight: 700;
-                background: linear-gradient(45deg, #FF6B6B, #4ECDC4, #45B7D1, #96C93D);
-                background-size: 300% 300%;
-                animation: gradient 15s ease infinite;
-                -webkit-background-clip: text;
-                background-clip: text;
-                -webkit-text-fill-color: transparent;
-                text-shadow: none;
-                order: 2;
-                padding: 1rem;
-                max-width: 900px;
-                margin: 0 auto;
-            }
-            .english-text {
-                font-size: clamp(0.9rem, 1.5vw, 1.2rem);
-                color: #555;
-                line-height: 1.8;
-                font-family: 'Georgia', serif;
-                order: 3;
-                max-width: 800px;
-                margin: 0 auto;
-            }
-            .refresh-btn {
-                position: absolute;
-                top: 20px;
-                right: 20px;
-                background: none;
-                border: none;
-                cursor: pointer;
-                font-size: 1.5rem;
-                color: #45B7D1;
-                transition: all 0.3s ease;
-                opacity: 0;
-                padding: 0.5rem;
-            }
-            .gita-quote:hover .refresh-btn {
-                opacity: 1;
-            }
-            .refresh-btn:hover {
-                transform: rotate(180deg);
-                color: #FF6B6B;
-            }
-            .typing-text {
-                display: block;
-                white-space: pre-wrap;
-                margin-bottom: 0.8rem;
-                position: relative;
-            }
-            .typing-text.typing::after {
-                content: '|';
-                position: relative;
-                display: inline-block;
-                margin-left: 2px;
-                color: #666;
-                animation: blink 1s step-end infinite;
-            }
-            @keyframes gradient {
-                0% { background-position: 0% 50%; }
-                50% { background-position: 100% 50%; }
-                100% { background-position: 0% 50%; }
-            }
-            @keyframes blink {
-                from, to { opacity: 1; }
-                50% { opacity: 0; }
-            }
-            @media (max-width: 768px) {
-                #gitaQuotes {
-                    padding: 0.5rem;
-                    width: 100%;
-                }
-                .gita-quote {
-                    padding: 2.5rem 1rem;
-                    gap: 1.5rem;
-                    margin: 0 auto 1.5rem auto;
-                }
-                .sanskrit-text {
-                    font-size: clamp(1.2rem, 2.5vw, 1.5rem) !important;
-                    padding: 0.5rem;
-                    line-height: 1.6;
-                }
-                .hindi-text {
-                    font-size: clamp(0.9rem, 1.8vw, 1.2rem) !important;
-                    padding: 0 0.5rem;
-                    line-height: 1.6;
-                }
-                .english-text {
-                    font-size: clamp(0.8rem, 1.5vw, 1rem) !important;
-                    padding: 0 0.5rem;
-                    line-height: 1.6;
-                }
-                .stats-grid {
-                    padding: 0 0.5rem;
-                }
-                .stat-card {
-                    padding: 1.25rem;
-                }
-            }
-        `;
-        document.head.appendChild(style);
-
-        // Function to type text
-        function typeText(element, text, onComplete) {
-            let index = 0;
-            element.textContent = '';
-            element.classList.add('typing');
-            
-            function type() {
-                if (index < text.length) {
-                    element.textContent = text.substring(0, index + 1);
-                    index++;
-                    setTimeout(type, 50);
-                } else {
-                    element.classList.remove('typing');
-                    if (onComplete) {
-                        setTimeout(onComplete, 100);
-                    }
-                }
-            }
-            
-            type();
-        }
-
-        // Function to refresh quotes
-        async function refreshQuotes() {
-            const gitaContainer = document.querySelector('#gitaQuotes');
-            if (!gitaContainer) return;
-
-            // Clear existing content
-            gitaContainer.innerHTML = '';
-
-            // Randomly select a quote
-            const randomQuote = gitaQuotes[Math.floor(Math.random() * gitaQuotes.length)];
-
-            // Display the quote
-            gitaContainer.innerHTML = `
-                <div class="gita-quote">
-                    <button onclick="refreshQuotes()" class="refresh-btn" title="Refresh Quote">
-                        <i class="fas fa-sync-alt"></i>
-                    </button>
-                    <div class="hindi-text"></div>
-                    <div class="sanskrit-text">${randomQuote.sanskrit.split('\n').join('<br>')}</div>
-                    <div class="english-text"></div>
-                </div>
-            `;
-
-            // Type Hindi text line by line
-            const hindiLines = randomQuote.hindi.split('\n');
-            const hindiContainer = gitaContainer.querySelector('.hindi-text');
-            let currentHindiLine = 0;
-
-            function typeHindiLine() {
-                if (currentHindiLine < hindiLines.length) {
-                    const lineDiv = document.createElement('div');
-                    lineDiv.className = 'typing-text';
-                    hindiContainer.appendChild(lineDiv);
-                    typeText(lineDiv, hindiLines[currentHindiLine], () => {
-                        currentHindiLine++;
-                        if (currentHindiLine < hindiLines.length) {
-                            setTimeout(typeHindiLine, 500);
-                        } else {
-                            typeEnglishLine();
-                        }
-                    });
-                }
-            }
-
-            // Type English text line by line
-            const englishLines = randomQuote.english.split('\n');
-            const englishContainer = gitaContainer.querySelector('.english-text');
-            let currentEnglishLine = 0;
-
-            function typeEnglishLine() {
-                if (currentEnglishLine < englishLines.length) {
-                    const lineDiv = document.createElement('div');
-                    lineDiv.className = 'typing-text';
-                    englishContainer.appendChild(lineDiv);
-                    typeText(lineDiv, englishLines[currentEnglishLine], () => {
-                        currentEnglishLine++;
-                        if (currentEnglishLine < englishLines.length) {
-                            setTimeout(typeEnglishLine, 500);
-                        }
-                    });
-                }
-            }
-
-            // Start the typing animation sequence
-            typeHindiLine();
-        }
-
-        // Add refreshQuotes to window object
-        window.refreshQuotes = refreshQuotes;
-
-        // Display initial quote and start typing
-        gitaContainer.innerHTML = `
-            <div class="gita-quote">
-                <button onclick="refreshQuotes()" class="refresh-btn" title="Refresh Quote">
-                    <i class="fas fa-sync-alt"></i>
-                </button>
-                <div class="hindi-text"></div>
-                <div class="sanskrit-text">${randomQuote.sanskrit.split('\n').join('<br>')}</div>
-                <div class="english-text"></div>
-            </div>
-        `;
-
-        // Start initial typing animation
-        const hindiLines = randomQuote.hindi.split('\n');
-        const hindiContainer = gitaContainer.querySelector('.hindi-text');
-        let currentHindiLine = 0;
-
-        function typeHindiLine() {
-            if (currentHindiLine < hindiLines.length) {
-                const lineDiv = document.createElement('div');
-                lineDiv.className = 'typing-text';
-                hindiContainer.appendChild(lineDiv);
-                typeText(lineDiv, hindiLines[currentHindiLine], () => {
-                    currentHindiLine++;
-                    if (currentHindiLine < hindiLines.length) {
-                        setTimeout(typeHindiLine, 500);
-                    } else {
-                        typeEnglishLine();
-                    }
-                });
-            }
-        }
-
-        // Type English text line by line
-        const englishLines = randomQuote.english.split('\n');
-        const englishContainer = gitaContainer.querySelector('.english-text');
-        let currentEnglishLine = 0;
-
-        function typeEnglishLine() {
-            if (currentEnglishLine < englishLines.length) {
-                const lineDiv = document.createElement('div');
-                lineDiv.className = 'typing-text';
-                englishContainer.appendChild(lineDiv);
-                typeText(lineDiv, englishLines[currentEnglishLine], () => {
-                    currentEnglishLine++;
-                    if (currentEnglishLine < englishLines.length) {
-                        setTimeout(typeEnglishLine, 500);
-                    }
-                });
-            }
-        }
-
-        // Start the typing animation sequence
-        typeHindiLine();
-
-        // Create stats section after Gita quotes
-        const statsSection = document.createElement('div');
-        statsSection.className = 'stats-grid';
-        statsSection.innerHTML = `
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-code"></i></div>
-                <div class="stat-info">
-                    <h3>Projects</h3>
-                    <p id="projectCount">${currentProjects.length}</p>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-blog"></i></div>
-                <div class="stat-info">
-                    <h3>Blog Posts</h3>
-                    <p id="blogCount">${currentPosts.length}</p>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-envelope"></i></div>
-                <div class="stat-info">
-                    <h3>Messages</h3>
-                    <p id="messageCount">${currentMessages.length}</p>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-eye"></i></div>
-                <div class="stat-info">
-                    <h3>Views</h3>
-                    <p id="viewCount">0</p>
-                </div>
-            </div>
-        `;
-        dashboardSection.appendChild(statsSection);
-
-        // Add stats styles
-        const statsStyle = document.createElement('style');
-        statsStyle.textContent = `
-            .stats-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 1.5rem;
-                padding: 0 1rem;
-                width: 100%;
-            }
-            .stat-card {
-                background: #fff;
-                padding: 1.5rem;
-                border-radius: 15px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                display: flex;
-                align-items: center;
-                gap: 1rem;
-            }
-            .stat-icon {
-                font-size: 2rem;
-                color: #663399;
-            }
-            .stat-info h3 {
-                font-size: 1rem;
-                color: #666;
-                margin: 0;
-            }
-            .stat-info p {
-                font-size: 1.5rem;
-                font-weight: bold;
-                color: #333;
-                margin: 0.25rem 0 0;
-            }
-        `;
-        document.head.appendChild(statsStyle);
+        // Create dashboard with updated content
+        createDashboard();
 
     } catch (error) {
-        console.error('Error loading dashboard content:', error);
-        showNotification('Failed to load dashboard content', 'error');
+        console.error('Error loading content:', error);
+        showNotification('Error loading content. Please try again.', 'error');
     }
 }
 
@@ -1380,18 +1042,488 @@ async function loadSectionContent(sectionId) {
     }
 }
 
-// Authentication
-document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+// Track authentication attempts
+let authAttempts = 0;
+
+// Fun error messages for different scenarios
+const errorMessages = {
+    invalidEmail: [
+        "Oh! Looks like you're not part of our secret club yet! 🎭",
+        "Hmm... This email isn't on our VIP list! 🤔",
+        "Sorry, but this area is for authorized personnel only! 🚫",
+        "Go get yourself a role first, then we'll talk! 😉",
+        "Are you sure you work here? I don't recognize that email! 🧐",
+        "This isn't like breaking into a candy store... you need proper access! 🍬",
+        "Nice try, but this email isn't in our cool kids list! 😎",
+        "Houston, we have a problem... that email doesn't exist! 🚀"
+    ],
+    invalidPassword: [
+        "Oops! That password isn't quite right! 🤫",
+        "Did you forget something? The password maybe? 🤔",
+        "Almost there, but not quite! Try again! 🎯",
+        "That's not the secret word we're looking for! 🔐",
+        "Close... but no cigar! Want to try again? 🎲",
+        "Nope, that's not it! Keep guessing! 🎮",
+        "Wrong password! Did you check under your pillow? 🛏️",
+        "The password fairy says that's incorrect! ✨"
+    ],
+    tooManyAttempts: [
+        "Whoa there! You're being a bit too persistent! 😅",
+        "Oh no! You're really determined, aren't you? 🧐",
+        "Maybe take a break and come back later? ⏰",
+        "I'm starting to think you're not supposed to be here... 🕵️‍♂️",
+        "You're really testing my patience now... 🤨",
+        "This is getting suspicious... are you a hacker? 👨‍💻",
+        "Time for a timeout! Let me think what to do with you... ⌛",
+        "You're quite persistent! But I can do this all day! 🦾"
+    ]
+};
+
+// Function to format time
+function formatTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+// Function to show authentication error
+function showAuthError(type) {
+    const loginForm = document.getElementById('adminLoginForm');
+    const loginBox = document.querySelector('.login-box');
+    
+    // Get random message based on type and attempts
+    let messages = errorMessages[type];
+    if (authAttempts >= 3) {
+        messages = errorMessages.tooManyAttempts;
+    }
+    const message = messages[Math.floor(Math.random() * messages.length)];
+
+    // Store original content
+    const originalContent = loginBox.innerHTML;
+
+    // Create error content
+    const errorContent = `
+        <div style="
+            padding: 2rem !important;
+            text-align: center !important;
+            color: #ffffff !important;
+            transform: scale(1) !important;
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+        ">
+            <div style="
+                font-size: 4rem !important;
+                margin-bottom: 1.5rem !important;
+                transform: scale(0.5) rotate(-180deg) !important;
+                opacity: 0;
+                transition: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+                transition-delay: 0.1s !important;
+            ">
+                ${type === 'invalidEmail' ? '🤷‍♂️' : type === 'invalidPassword' ? '🔒' : '⚠️'}
+            </div>
+            <div style="
+                font-size: 2rem !important;
+                margin-bottom: 1.5rem !important;
+                font-weight: 600 !important;
+                transform: translateY(20px) !important;
+                opacity: 0;
+                transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+                transition-delay: 0.2s !important;
+            ">
+                Access Denied!
+            </div>
+            <div style="
+                color: #cccccc !important;
+                margin-bottom: 2rem !important;
+                font-size: 1.3rem !important;
+                line-height: 1.6 !important;
+                transform: translateY(20px) !important;
+                opacity: 0;
+                transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+                transition-delay: 0.3s !important;
+            ">
+                ${message}
+                ${authAttempts >= 3 ? `
+                    <div style="
+                        margin-top: 1rem !important;
+                        color: #ff6b6b !important;
+                        animation: pulse 2s infinite !important;
+                    " id="timer">
+                        Wait for 0:30 so I can think what to do with you...
+                    </div>
+                ` : ''}
+            </div>
+            <button class="error-message-button" style="
+                padding: 1.2rem 3rem !important;
+                font-size: 1.2rem !important;
+                border-radius: 0.8rem !important;
+                background: linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%) !important;
+                color: white !important;
+                border: none !important;
+                cursor: pointer !important;
+                transition: all 0.3s ease !important;
+                margin: 0 auto !important;
+                text-align: center !important;
+                display: inline-block !important;
+                font-weight: 500 !important;
+                text-decoration: none !important;
+                line-height: normal !important;
+                box-shadow: 0 10px 20px -10px rgba(255, 65, 108, 0.5) !important;
+                transform: translateY(20px) !important;
+                opacity: 0;
+                transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+                transition-delay: 0.4s !important;
+                ${authAttempts >= 3 ? 'opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(1) !important;' : ''}
+            ">
+                Let me try again
+                    </button>
+                </div>
+            `;
+
+    // Add transition to login box
+    loginBox.style.transition = 'all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+
+    // Animate out the login form
+    loginForm.style.transition = 'all 0.3s ease';
+    loginForm.style.transform = 'scale(0.8) translateY(-20px)';
+    loginForm.style.opacity = '0';
+
+    setTimeout(() => {
+        // Replace content
+        loginBox.innerHTML = errorContent;
+        
+        // Get all animated elements
+        const container = loginBox.querySelector('div');
+        const emoji = container.querySelector('div:nth-child(1)');
+        const title = container.querySelector('div:nth-child(2)');
+        const messageEl = container.querySelector('div:nth-child(3)');
+        const button = container.querySelector('button');
+
+        // Trigger animations
+        requestAnimationFrame(() => {
+            container.style.opacity = '1';
+            container.style.transform = 'scale(1)';
+            
+            emoji.style.transform = 'scale(1) rotate(0deg)';
+            emoji.style.opacity = '1';
+            
+            title.style.transform = 'translateY(0)';
+            title.style.opacity = '1';
+            
+            messageEl.style.transform = 'translateY(0)';
+            messageEl.style.opacity = '1';
+            
+            button.style.transform = 'translateY(0)';
+            button.style.opacity = '1';
+        });
+
+        // Handle try again button
+        const tryAgainButton = loginBox.querySelector('.error-message-button');
+        if (tryAgainButton) {
+            if (authAttempts >= 3) {
+                // Timer code remains the same
+                let timeLeft = 30;
+                const timerElement = loginBox.querySelector('#timer');
+                const timerInterval = setInterval(() => {
+                    timeLeft--;
+                    if (timerElement) {
+                        timerElement.textContent = `Wait for ${formatTime(timeLeft)} so I can think what to do with you...`;
+                    }
+                    if (timeLeft <= 0) {
+                        clearInterval(timerInterval);
+                        tryAgainButton.style.opacity = '1';
+                        tryAgainButton.style.cursor = 'pointer';
+                        if (timerElement) {
+                            timerElement.textContent = "Okay, I'll give you another chance...";
+                            timerElement.style.color = '#4ade80 !important';
+                        }
+                        tryAgainButton.addEventListener('click', restoreLoginForm);
+                    }
+                }, 1000);
+                    } else {
+                tryAgainButton.addEventListener('click', restoreLoginForm);
+            }
+
+            // Add hover effect
+            tryAgainButton.addEventListener('mouseover', () => {
+                if (authAttempts < 3) {
+                    tryAgainButton.style.background = 'linear-gradient(135deg, #FF4B2B 0%, #FF416C 100%) !important';
+                    tryAgainButton.style.transform = 'translateY(-2px)';
+                    tryAgainButton.style.boxShadow = '0 15px 25px -10px rgba(255, 65, 108, 0.6)';
+                }
+            });
+            tryAgainButton.addEventListener('mouseout', () => {
+                if (authAttempts < 3) {
+                    tryAgainButton.style.background = 'linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%) !important';
+                    tryAgainButton.style.transform = 'translateY(0)';
+                    tryAgainButton.style.boxShadow = '0 10px 20px -10px rgba(255, 65, 108, 0.5)';
+                }
+            });
+        }
+    }, 300);
+
+    // Function to restore login form with animation
+    function restoreLoginForm() {
+        // Animate out error content
+        const container = loginBox.querySelector('div');
+        container.style.transform = 'scale(0.8) translateY(20px)';
+        container.style.opacity = '0';
+
+        setTimeout(() => {
+            // Restore original form
+            loginBox.innerHTML = originalContent;
+            const loginForm = loginBox.querySelector('#adminLoginForm');
+            
+            // Set initial state
+            loginForm.style.transform = 'scale(0.8) translateY(-20px)';
+            loginForm.style.opacity = '0';
+            
+            // Trigger animation
+            requestAnimationFrame(() => {
+                loginForm.style.transform = 'scale(1) translateY(0)';
+                loginForm.style.opacity = '1';
+            });
+
+            // Clear input fields
+            const emailInput = loginBox.querySelector('#adminEmail');
+            const passwordInput = loginBox.querySelector('#adminPassword');
+            if (emailInput) emailInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+        }, 300);
+    }
+
+    // Increment attempts counter
+    authAttempts++;
+}
+
+// Function to show loader after login
+async function showLoader() {
+    // Create container with solid background
+    const adminLoaderContainer = document.createElement('div');
+    adminLoaderContainer.className = 'admin-loader-container';
+    adminLoaderContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#1a1a1a' : '#ffffff'} !important;
+        z-index: 9999999999;
+        opacity: 1;
+        transition: opacity 0.5s ease-out;
+    `;
+
+    // Create loader box with glass effect
+    const loaderBox = document.createElement('div');
+    loaderBox.style.cssText = `
+        background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'rgba(37, 37, 37, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
+        border-radius: 20px;
+        padding: 2rem;
+        text-align: center;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        transform: scale(0.9);
+        opacity: 0;
+        transition: all 0.3s ease-out;
+    `;
+
+    // Create and style the loader
+    const adminLoader = document.createElement('div');
+    adminLoader.className = 'admin-loader';
+    adminLoader.style.cssText = `
+        width: 80px;
+        height: 80px;
+        position: relative;
+        margin: 0 auto 1.5rem;
+        animation: adminLoaderPulse 2s ease-in-out infinite;
+    `;
+
+    const loaderImg = document.createElement('img');
+    loaderImg.src = 'logo/logo.png';
+    loaderImg.alt = 'Loading...';
+    loaderImg.style.cssText = `
+                width: 100%;
+        height: 100%;
+        object-fit: contain;
+        filter: ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'brightness(100)' : 'brightness(0)'};
+        transition: filter 0.3s ease;
+    `;
+
+    // Try to get profile name
+    let profileName = 'Admin';
+    try {
+        const profileData = await loadProfileData();
+        if (profileData?.name) {
+            // Convert to Title Case (first letter capital, rest lowercase)
+            profileName = profileData.name.split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+        }
+    } catch (error) {
+        console.warn('Error loading profile name:', error);
+    }
+
+    // Create message container
+    const messageContainer = document.createElement('div');
+    messageContainer.innerHTML = `
+        <div style="
+            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#1a1a1a'};
+                font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        ">Hey, ${profileName}!</div>
+        <div id="loaderMessage" style="
+            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#cccccc' : '#666666'};
+            font-size: 1.1rem;
+        ">Setting up your workspace...</div>
+        <div class="progress-bar" style="
+            width: 200px;
+            height: 4px;
+            background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#333' : '#eee'};
+            margin: 1.5rem auto 0;
+            border-radius: 2px;
+            overflow: hidden;
+        ">
+            <div class="progress" style="
+                width: 100%;
+                height: 100%;
+                background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#8bb9dd' : '#2a6496'};
+                transform: translateX(-100%);
+                animation: progress 5s linear forwards;
+            "></div>
+        </div>
+    `;
+
+    // Add animation keyframes
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = `
+        @keyframes adminLoaderPulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes progress {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(0); }
+        }
+    `;
+    document.head.appendChild(styleSheet);
+
+    // Assemble the loader
+    adminLoader.appendChild(loaderImg);
+    loaderBox.appendChild(adminLoader);
+    loaderBox.appendChild(messageContainer);
+    adminLoaderContainer.appendChild(loaderBox);
+    document.body.appendChild(adminLoaderContainer);
+
+    // Messages for loading state
+    const loadingMessages = [
+        "Setting up your workspace...",
+        "Preparing your dashboard...",
+        "Loading your content...",
+        "Almost there...",
+        "Just a few more moments..."
+    ];
+
+    // Show loader with animation
+    requestAnimationFrame(() => {
+        loaderBox.style.transform = 'scale(1)';
+        loaderBox.style.opacity = '1';
+    });
+
+    // Cycle through loading messages
+    let messageIndex = 0;
+    const messageInterval = setInterval(() => {
+        const messageElement = document.getElementById('loaderMessage');
+        if (messageElement) {
+            messageElement.style.opacity = '0';
+            setTimeout(() => {
+                messageElement.textContent = loadingMessages[messageIndex];
+                messageElement.style.opacity = '1';
+                messageIndex = (messageIndex + 1) % loadingMessages.length;
+            }, 200);
+        }
+    }, 2000);
+
+    // Return a promise that resolves when loading is done
+    return new Promise((resolve) => {
+        const minLoadTime = 5000; // Minimum 5 seconds
+        const startTime = Date.now();
+
+        // Function to check if content is loaded
+        const checkContentLoaded = () => {
+            const elapsedTime = Date.now() - startTime;
+            const remainingTime = Math.max(0, minLoadTime - elapsedTime);
+
+            // If minimum time has passed and content is loaded
+            if (elapsedTime >= minLoadTime && document.readyState === 'complete') {
+                clearInterval(messageInterval);
+                
+                // Fade out loader
+                loaderBox.style.transform = 'scale(0.9)';
+                loaderBox.style.opacity = '0';
+                setTimeout(() => {
+                    adminLoaderContainer.style.opacity = '0';
+                    setTimeout(() => {
+                        adminLoaderContainer.remove();
+                        styleSheet.remove();
+                        resolve();
+                    }, 300);
+                }, 200);
+            } else {
+                // Check again in 100ms
+                setTimeout(checkContentLoaded, 100);
+            }
+        };
+
+        // Start checking
+        checkContentLoaded();
+    });
+}
+
+// Update the login form submission handler
+document.getElementById('adminLoginForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    
     const email = document.getElementById('adminEmail').value;
     const password = document.getElementById('adminPassword').value;
 
     try {
-        await adminLogin(email, password);
-        // The onAuthStateChanged listener will handle UI updates
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            showAuthError('invalidEmail');
+            return;
+        }
+
+        // Attempt login
+        await signInWithEmailAndPassword(auth, email, password);
+        
+        // Reset attempts on successful login
+        authAttempts = 0;
+        
+        // Show loader and wait for content
+        await showLoader();
+        
+        // After loader finishes, initialize the dashboard
+        initializeDashboard();
+        
     } catch (error) {
         console.error('Login error:', error);
-        showNotification(`Login failed: ${error.message}`, 'error');
+        
+        // Show appropriate error message
+        if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found') {
+            showAuthError('invalidEmail');
+        } else if (error.code === 'auth/wrong-password') {
+            showAuthError('invalidPassword');
+        } else {
+            showAuthError('invalidPassword');
+        }
     }
 });
 
@@ -1756,6 +1888,7 @@ window.removeTitleField = removeTitleField;
 window.addSocialLinkField = addSocialLinkField;
 window.removeSocialLink = removeSocialLink;
 window.cancelProfileEdit = cancelProfileEdit;
+window.enableEditMode = enableEditMode; // Add this line
 
 async function loadAboutSection() {
     const content = await loadAboutContent();
@@ -2739,13 +2872,155 @@ function setReadMode(sectionElement) {
 // Logout Function
 async function logout() {
     try {
+        // First sign out from Firebase
         await signOut(auth);
-        showNotification('Logged out successfully');
+        
+        // Get current theme for styling
+        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+        
+        // Create and show the farewell animation
+        const flash = document.createElement('div');
+        flash.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            background: ${isDarkMode ? '#1a1a1a' : '#ffffff'};
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease-in;
+        `;
+
+        const message = document.createElement('div');
+        message.style.cssText = `
+            text-align: center;
+            transform: scale(0.8);
+            opacity: 0;
+            transition: all 0.5s ease-out;
+            max-width: 80%;
+            padding: 40px;
+            border-radius: 20px;
+            background: ${isDarkMode ? '#2d2d2d' : '#f8f9fa'};
+            box-shadow: ${isDarkMode ? '0 8px 32px rgba(0, 0, 0, 0.3)' : '0 8px 32px rgba(0, 0, 0, 0.1)'};
+        `;
+
+        // Try to get profile name
+        let profileName = 'Admin';
+        try {
+            const profileData = await loadProfile();
+            if (profileData?.name) {
+                profileName = profileData.name.split(' ')[0]; // Use first name only
+            }
+        } catch (error) {
+            console.warn('Error loading profile name:', error);
+        }
+
+        const farewells = [
+            "Goodbye",
+            "See you soon",
+            "Until next time",
+            "Take care"
+        ];
+        const randomFarewell = farewells[Math.floor(Math.random() * farewells.length)];
+
+        message.innerHTML = `
+            <div style="margin-bottom: 30px;">
+                <div style="font-size: 3rem; margin-bottom: 15px;">👋</div>
+                <div style="font-size: 2.2rem; color: ${isDarkMode ? '#fff' : '#1a1a1a'}; margin-bottom: 15px; font-weight: 600;">
+                    ${randomFarewell}, ${profileName}
+                </div>
+                <div style="color: ${isDarkMode ? '#e1e1e1' : '#333'}; margin-bottom: 15px; font-size: 1.1rem;">
+                    Logging you out securely...
+                </div>
+                <div class="progress-container" style="width: 200px; height: 4px; background: ${isDarkMode ? '#333' : '#eee'}; border-radius: 2px; margin: 20px auto; overflow: hidden;">
+                    <div class="progress" style="width: 0%; height: 100%; background: #4169E1; transition: width 2s ease-in-out;"></div>
+                </div>
+            </div>
+        `;
+
+        flash.appendChild(message);
+        document.body.appendChild(flash);
+
+        // Hide the login form and dashboard immediately
+        const loginForm = document.getElementById('loginForm');
+        const adminDashboard = document.getElementById('adminDashboard');
+        loginForm.style.display = 'none';
+        adminDashboard.style.display = 'none';
+
+        // Trigger animations
+        requestAnimationFrame(() => {
+            flash.style.opacity = '1';
+            message.style.opacity = '1';
+            message.style.transform = 'scale(1)';
+            // Start progress bar
+            const progress = message.querySelector('.progress');
+            progress.style.width = '100%';
+        });
+
+        // Wait for animation
+        await new Promise(resolve => setTimeout(resolve, 2500));
+
+        // Reset UI state
+        const sections = document.querySelectorAll('.content-section');
+        
+        // Clear form fields
+        document.getElementById('adminEmail').value = '';
+        document.getElementById('adminPassword').value = '';
+        
+        // Hide all sections
+        sections.forEach(section => {
+            section.style.display = 'none';
+        });
+        
+        // Clear any stored data
+        localStorage.removeItem('theme');
+        
+        // Fade out animation
+        flash.style.opacity = '0';
+        message.style.transform = 'scale(1.2)';
+        message.style.opacity = '0';
+        
+        // Show login form after animation completes
+        setTimeout(() => {
+            flash.remove();
+            loginForm.style.display = 'flex';
+            window.location.reload();
+        }, 500);
+
     } catch (error) {
         console.error('Error signing out:', error);
         showNotification('Error signing out. Please try again.', 'error');
     }
 }
+
+// Add event listeners for logout buttons
+document.addEventListener('DOMContentLoaded', function() {
+    // Desktop logout button
+    const logoutBtn = document.querySelector('.logout-container button');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            logout();
+        });
+    }
+    
+    // Mobile logout button
+    const mobileLogoutBtn = document.querySelector('.nav-item.logout-mobile');
+    if (mobileLogoutBtn) {
+        mobileLogoutBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            logout();
+        });
+    }
+});
 
 // Make logout function globally accessible
 window.logout = logout;
@@ -3686,6 +3961,132 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Existing event listeners...
 });
+
+// About form submission handler
+document.addEventListener('DOMContentLoaded', () => {
+    const aboutForm = document.querySelector('#aboutSection form');
+    if (aboutForm) {
+        aboutForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            try {
+                const aboutEditor = document.getElementById('aboutEditor');
+                const content = aboutEditor.innerHTML;
+                
+                await updateAbout({ bio: content });
+                await loadAboutSection();
+                
+                // Switch back to read mode
+                const aboutSection = document.getElementById('aboutSection');
+                setReadMode(aboutSection);
+                
+                showNotification('About section updated successfully', 'success');
+            } catch (error) {
+                console.error('Error updating about section:', error);
+                showNotification('Failed to update about section', 'error');
+            }
+        });
+    }
+});
+
+// Function to create dashboard
+function createDashboard() {
+    // Get dashboard section
+    const dashboardSection = document.getElementById('dashboardSection');
+    dashboardSection.innerHTML = '';
+
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+        .dashboard {
+            width: 100%;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            background: var(--card-background);
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-color);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+        .card h3 {
+            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#1a1a1a'};
+            margin: 0 0 1rem;
+            font-size: 1.8rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .count {
+            font-size: 3.5rem;
+            font-weight: bold;
+            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#8bb9dd' : '#2a6496'};
+            margin: 1rem 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .icon {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            font-size: 2rem;
+            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#1a1a1a'};
+            opacity: 0.8;
+        }
+        @media (max-width: 768px) {
+            .dashboard {
+                padding: 1rem;
+                grid-template-columns: 1fr;
+            }
+            .card {
+                padding: 1.5rem;
+            }
+            .count {
+                font-size: 3rem;
+            }
+            .icon {
+                font-size: 1.8rem;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Create dashboard container
+    const dashboard = document.createElement('div');
+    dashboard.className = 'dashboard';
+
+    // Create cards for projects, blog posts, and messages
+    const cards = [
+        { title: 'Projects', count: '0', icon: '⌨️' },
+        { title: 'Blog Posts', count: '0', icon: '📝' },
+        { title: 'Messages', count: '13', icon: '✉️' }
+    ];
+
+    cards.forEach(card => {
+        const cardElement = document.createElement('div');
+        cardElement.className = 'card';
+        cardElement.innerHTML = `
+            <span class="icon">${card.icon}</span>
+            <h3>${card.title}</h3>
+            <div class="count">${card.count}</div>
+        `;
+        dashboard.appendChild(cardElement);
+    });
+
+    // Add dashboard to the section
+    dashboardSection.appendChild(dashboard);
+}
 
 
 
