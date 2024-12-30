@@ -40,6 +40,23 @@
                     <i class="fas fa-eye-slash toggle-password" onclick="togglePassword()"></i>
                 </div>
                 <button type="submit" class="btn primary">Login</button>
+                <div class="forgot-password">
+                    <a href="#" onclick="showPasswordResetModal(event)">Forgot Password?</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Password Reset Modal -->
+    <div id="passwordResetModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closePasswordResetModal()">&times;</span>
+            <h2>Reset Password</h2>
+            <form id="passwordResetForm">
+                <div class="input-group">
+                    <input type="email" id="resetEmail" placeholder="Enter your email" required>
+                </div>
+                <button type="submit" class="btn primary">Send Reset Link</button>
             </form>
         </div>
     </div>
@@ -591,5 +608,39 @@
     <!-- Custom JS -->
     <script type="module" src="js/firebase-config.js"></script>
     <script type="module" src="js/admin.js"></script>
+    <script type="module" src="js/password-reset.js"></script>
+    <script>
+        // Password Reset Modal Functions
+        function showPasswordResetModal(event) {
+            event.preventDefault();
+            document.getElementById('passwordResetModal').style.display = 'block';
+        }
+
+        function closePasswordResetModal() {
+            document.getElementById('passwordResetModal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('passwordResetModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Handle password reset form submission
+        document.getElementById('passwordResetForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const email = document.getElementById('resetEmail').value;
+            
+            try {
+                const { sendPasswordReset } = await import('./js/password-reset.js');
+                await sendPasswordReset(email);
+                closePasswordResetModal();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+    </script>
 </body>
 </html> 
