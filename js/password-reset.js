@@ -66,11 +66,24 @@ function showMessage(message, type = 'info') {
     const messageElement = document.createElement('div');
     messageElement.className = `alert alert-${type}`;
     messageElement.textContent = message;
-    messageElement.style.padding = '10px 20px';
+    messageElement.style.padding = '12px 20px';
     messageElement.style.marginBottom = '10px';
-    messageElement.style.borderRadius = '4px';
-    messageElement.style.backgroundColor = type === 'success' ? '#4CAF50' : '#f44336';
-    messageElement.style.color = 'white';
+    messageElement.style.borderRadius = '8px';
+    messageElement.style.fontSize = '14px';
+    messageElement.style.lineHeight = '1.5';
+    messageElement.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+    messageElement.style.minWidth = '300px';
+    messageElement.style.backgroundColor = '#ffffff';
+    messageElement.style.color = '#333333';
+    messageElement.style.border = '1px solid #e0e0e0';
+
+    if (type === 'error') {
+        messageElement.style.borderLeft = '4px solid #f44336';
+        messageElement.style.backgroundColor = '#fff2f2';
+    } else if (type === 'success') {
+        messageElement.style.borderLeft = '4px solid #4CAF50';
+        messageElement.style.backgroundColor = '#f0fff0';
+    }
 
     document.getElementById('messageContainer').appendChild(messageElement);
 

@@ -17,9 +17,594 @@
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/admin.css">
     <link rel="stylesheet" href="css/admindark.css">
+    <link rel="stylesheet" href="css/loginpage.css"> 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="theme-color" content="#4169E1" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)">
+    <style>
+        /* Binary Flow Background */
+        .code-background {
+            opacity: 0.1 !important;
+        }
+
+        /* Widget Modal Styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .modal-content {
+            background: var(--background-color);
+            padding: 2rem;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+            margin: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: var(--text-color);
+        }
+
+        .close {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .close:hover {
+            opacity: 0.8;
+        }
+
+        /* Section Header Styles */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        /* Fix button sizes across all sections */
+        .btn.primary {
+            min-width: auto;
+            width: auto;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            margin-top: 1rem;
+        }
+
+        .form-actions .btn {
+            min-width: auto;
+            width: auto;
+            padding: 0.5rem 1rem;
+        }
+
+        /* Exception for login and forgot password buttons */
+        #loginForm .btn.primary,
+        .forgot-password-content .btn.primary {
+            width: 100%;
+            padding: 0.75rem;
+        }
+
+        /* Forgot Password Modal Styles */
+        .forgot-password-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .forgot-password-content {
+            background: rgba(33, 37, 41, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 90%;
+            max-width: 400px;
+            position: relative;
+            padding: 2rem;
+            border-radius: 8px;
+            animation: slideDown 0.3s ease-out;
+            margin: 0 auto;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* Light mode styles for forgot password modal */
+        [data-theme="light"] .forgot-password-content {
+            background: #ffffff;
+            color: #333333;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="light"] .forgot-password-content h2 {
+            color: #333333;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-size: 1.8rem;
+        }
+
+        /* Close button styles for both modes */
+        .forgot-password-content .close {
+            position: absolute;
+            right: 1rem;
+            top: 1rem;
+            font-size: 28px;
+            font-weight: normal;
+            cursor: pointer;
+            background: none;
+            border: none;
+            line-height: 1;
+            padding: 0;
+            transition: all 0.3s ease;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            color: white;
+        }
+
+        .forgot-password-content .close:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Light mode close button */
+        [data-theme="light"] .forgot-password-content .close {
+            color: #666666;
+        }
+
+        [data-theme="light"] .forgot-password-content .close:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+            color: #333333;
+        }
+
+        [data-theme="light"] .forgot-password-content .input-group {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        [data-theme="light"] .forgot-password-content .input-group input {
+            background-color: transparent;
+            color: #333333;
+            border: none;
+            width: 100%;
+            padding: 1rem 2.5rem 1rem 3rem;
+            font-size: 1rem;
+        }
+
+        [data-theme="light"] .forgot-password-content .input-group input::placeholder {
+            color: #666666;
+        }
+
+        [data-theme="light"] .forgot-password-content .input-group i {
+            color: #666666;
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        [data-theme="light"] .forgot-password-content .btn.primary {
+            background: linear-gradient(45deg, #4169E1, #5c85ff);
+            color: white;
+            border: none;
+            padding: 1rem;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        [data-theme="light"] .forgot-password-content .btn.primary:hover {
+            background: linear-gradient(45deg, #5c85ff, #4169E1);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(65, 105, 225, 0.3);
+        }
+
+        /* Notification Styles */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 9999;
+            transform: translateX(120%);
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            border-left: 4px solid #4CAF50;
+        }
+
+        .notification.error {
+            border-left: 4px solid #f44336;
+        }
+
+        .notification-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .notification i {
+            font-size: 1.2rem;
+        }
+
+        .notification.success i {
+            color: #4CAF50;
+        }
+
+        .notification.error i {
+            color: #f44336;
+        }
+
+        /* Message Section Styles */
+        .messages-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .message-item {
+            background: var(--background-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .message-item:hover {
+            transform: translateX(5px);
+            border-left: 3px solid #4169E1;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.5rem;
+        }
+
+        .sender-info {
+            flex: 1;
+        }
+
+        .sender-info h4 {
+            margin: 0;
+            color: var(--text-color);
+            font-size: 1rem;
+        }
+
+        .sender-info p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .message-date {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .message-content {
+            margin: 0.5rem 0;
+        }
+
+        .message-content p {
+            margin: 0;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: var(--text-color);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        .message-actions .btn-icon {
+            padding: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        .message-unread {
+            background: rgba(65, 105, 225, 0.1);
+        }
+
+        .message-unread::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #4169E1;
+            border-radius: 50%;
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+        }
+
+        /* Dashboard Message Stats */
+        .stat-card .stat-details {
+            display: flex;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        .stat-card .stat-details span {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        #passwordResetModal .modal-content {
+            background: rgba(33, 37, 41, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 90%;
+            max-width: 400px;
+            position: relative;
+            padding: 2rem;
+            border-radius: 8px;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        #passwordResetModal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #passwordResetModal.show {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Message styles for light mode */
+        [data-theme="light"] #messageContainer {
+            color: #333333;
+        }
+
+        [data-theme="light"] .alert {
+            background: #ffffff;
+            color: #333333;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            font-size: 1.1rem;
+            padding: 12px 20px;
+        }
+
+        [data-theme="light"] .alert.error {
+            background-color: #fff2f2;
+            border-left: 4px solid #f44336;
+            color: #333333;
+        }
+
+        [data-theme="light"] .alert.success {
+            background-color: #f0fff0;
+            border-left: 4px solid #4CAF50;
+            color: #333333;
+        }
+
+        /* Access Denied and other error messages */
+        [data-theme="light"] div[style*="opacity: 1"] {
+            color: #333333 !important;
+            font-size: 1.5rem !important;
+            margin-bottom: 1rem !important;
+        }
+
+        [data-theme="light"] div[style*="font-size: 1.1rem"] {
+            color: #333333 !important;
+        }
+
+        #passwordResetModal h2 {
+            color: white;
+            font-size: 1.8rem;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        [data-theme="light"] #passwordResetModal h2 {
+            color: #333333;
+        }
+
+        /* Light mode styles for forgot password modal */
+        [data-theme="light"] .forgot-password-content {
+            background: #ffffff;
+            color: #333333;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="light"] .forgot-password-content h2 {
+            color: #333333;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-size: 1.8rem;
+        }
+
+        [data-theme="light"] #passwordResetModal .input-group {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        [data-theme="light"] #passwordResetModal .input-group input {
+            background-color: transparent;
+            color: #333333;
+            border: none;
+            width: 100%;
+            padding: 1rem 2.5rem 1rem 3rem;
+            font-size: 1rem;
+        }
+
+        [data-theme="light"] #passwordResetModal .input-group input::placeholder {
+            color: #666666;
+        }
+
+        [data-theme="light"] #passwordResetModal .input-group i {
+            color: #666666;
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        [data-theme="light"] #passwordResetModal h2 {
+            color: #333333;
+            font-size: 1.8rem;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        #passwordResetModal .close {
+            color: rgba(255, 255, 255, 0.8);
+            transition: color 0.3s ease;
+        }
+
+        [data-theme="light"] #passwordResetModal .close {
+            color: #666666;
+        }
+
+        [data-theme="light"] #passwordResetModal .close:hover {
+            color: #333333;
+        }
+
+        .input-group input[type="password"] {
+            -webkit-text-security: disc;
+            font-family: text-security-disc;
+            letter-spacing: 2px;
+        }
+
+        @supports (-webkit-text-security: disc) {
+            .input-group input[type="password"] {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+                -webkit-text-security: disc;
+                letter-spacing: 2px;
+            }
+        }
+
+        /* Password field in light mode */
+        [data-theme="light"] .input-group input[type="password"] {
+            -webkit-text-security: disc;
+            letter-spacing: 2px;
+            color: #333333;
+        }
+
+        /* When password is visible */
+        .input-group input[type="text"].password-visible {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+            letter-spacing: normal;
+        }
+
+        .login-logo {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .login-logo img {
+            height: 100px;
+            width: auto;
+        }
+    </style>
 </head>
 <body>
     <!-- Login Form -->
@@ -33,9 +618,11 @@
             </div>
             <form id="adminLoginForm">
                 <div class="input-group">
+                    <i class="fas fa-user"></i>
                     <input type="email" id="adminEmail" placeholder="Email" required>
                 </div>
                 <div class="input-group">
+                    <i class="fas fa-lock"></i>
                     <input type="password" id="adminPassword" placeholder="Password" required>
                     <i class="fas fa-eye-slash toggle-password" onclick="togglePassword()"></i>
                 </div>
@@ -48,12 +635,13 @@
     </div>
 
     <!-- Password Reset Modal -->
-    <div id="passwordResetModal" class="modal" style="display: none;">
-        <div class="modal-content">
+    <div id="passwordResetModal" class="forgot-password-modal" style="display: none;">
+        <div class="forgot-password-content">
             <span class="close" onclick="closePasswordResetModal()">&times;</span>
             <h2>Reset Password</h2>
             <form id="passwordResetForm">
                 <div class="input-group">
+                    <i class="fas fa-envelope"></i>
                     <input type="email" id="resetEmail" placeholder="Enter your email" required>
                 </div>
                 <button type="submit" class="btn primary">Send Reset Link</button>
@@ -197,6 +785,9 @@
                             <div class="stat-info">
                                 <h3>Messages</h3>
                                 <p id="messageCount">0</p>
+                                <div class="stat-details">
+                                    <span><i class="fas fa-envelope"></i> <span id="unreadCount">0</span> unread</span>
+                                </div>
                             </div>
                         </div>
                         <div class="stat-card">
@@ -340,7 +931,7 @@
                 <section id="projectsSection" class="content-section" style="display: none;">
                     <div class="section-header">
                         <h2>Projects</h2>
-                        <button class="btn primary" onclick="showModal('projectModal')">Add Project</button>
+                        <button class="btn primary" onclick="addNewProject()">Add Project</button>
                     </div>
                     <div id="projectsList">
                         <!-- Project items will be loaded dynamically -->
@@ -351,7 +942,7 @@
                 <section id="blogSection" class="content-section" style="display: none;">
                     <div class="section-header">
                         <h2>Blog Posts</h2>
-                        <button class="btn primary" onclick="showModal('blogModal')">Add Post</button>
+                        <button class="btn primary" onclick="addNewBlogPost()">Add Post</button>
                     </div>
                     <div id="blogList">
                         <!-- Blog posts will be loaded dynamically -->
@@ -363,8 +954,10 @@
                     <div class="section-header">
                         <h2>Messages</h2>
                     </div>
-                    <div id="messagesList" class="messages-list">
-                        <!-- Messages will be loaded dynamically -->
+                    <div class="section-content">
+                        <div id="messagesList" class="messages-list">
+                            <!-- Messages will be loaded dynamically -->
+                        </div>
                     </div>
                 </section>
 
@@ -403,8 +996,8 @@
                 <section id="skillsSection" class="content-section" style="display: none;">
                     <div class="section-header">
                         <h2>Skills</h2>
-                        <button class="btn primary" onclick="showAddSkillDialog()">
-                            <i class="fas fa-plus"></i> Add Skill
+                        <button class="btn primary" onclick="showAddSkillCategoryDialog()">
+                            <i class="fas fa-plus"></i> Add Category
                         </button>
                     </div>
                     <div id="skillsDisplay" class="skills-categories">
@@ -420,6 +1013,25 @@
                         </div>
                     </form>
                 </section>
+
+                <!-- Skill Category Modal -->
+                <div id="skillCategoryModal" class="modal" style="display: none;">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h3>Add Category</h3>
+                            <button class="close" onclick="closeModal('skillCategoryModal')">&times;</button>
+                        </div>
+                        <form id="skillCategoryForm">
+                            <div class="form-group">
+                                <label>Category Name</label>
+                                <input type="text" id="categoryName" required placeholder="e.g., Programming Languages, Frameworks, etc.">
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn primary">Save Category</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
 
                 <!-- Certifications Section -->
                 <section id="certificationsSection" class="content-section" style="display: none;">
@@ -487,42 +1099,6 @@
                     </div>
                 </section>
 
-                <!-- Skills Modal -->
-                <div id="skillModal" class="modal">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h3>Add Skill</h3>
-                            <button class="close" onclick="closeModal('skillModal')">&times;</button>
-                        </div>
-                        <form id="skillForm">
-                            <div class="form-group">
-                                <label>Category</label>
-                                <input type="text" id="skillCategory" required placeholder="e.g., Programming Languages, Frameworks, etc.">
-                            </div>
-                            <div class="form-group">
-                                <label>Skill Name</label>
-                                <input type="text" id="skillName" required placeholder="e.g., JavaScript, React, etc.">
-                            </div>
-                            <div class="form-group">
-                                <label>Proficiency Level (1-100%)</label>
-                                <div class="range-input">
-                                    <input type="range" id="skillLevel" min="1" max="100" value="50" oninput="handleSkillLevelChange(this)">
-                                    <span id="skillLevelValue">50%</span>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label>Icon (Font Awesome Class)</label>
-                                <div class="icon-input">
-                                    <input type="text" id="skillIcon" placeholder="e.g., fab fa-js, fab fa-react" oninput="handleSkillIconChange(this)">
-                                    <i id="iconPreview" class=""></i>
-                                </div>
-                                <small>Visit <a href="https://fontawesome.com/icons" target="_blank">Font Awesome</a> to find icons</small>
-                            </div>
-                            <button type="submit" class="btn primary">Save Skill</button>
-                        </form>
-                    </div>
-                </div>
-
                 <!-- Blog Comments Section -->
                 <div id="blogCommentsSection" class="content-section">
                     <div class="breadcrumb">
@@ -538,94 +1114,153 @@
         </main>
     </div>
 
-    <!-- Modals -->
-    <!-- Project Modal -->
-    <div id="projectModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add Project</h3>
-                <button class="close">&times;</button>
-            </div>
-            <form id="projectForm">
-                <div class="form-group">
-                    <label>Title</label>
-                    <input type="text" id="projectTitle" required>
-                </div>
-                <div class="form-group">
-                    <label>Description</label>
-                    <textarea id="projectDescription" rows="4" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Technologies</label>
-                    <input type="text" id="projectTechnologies" placeholder="Comma-separated list">
-                </div>
-                <div class="form-group">
-                    <label>Project Image</label>
-                    <input type="file" id="projectImage" accept="image/*">
-                </div>
-                <div class="form-group">
-                    <label>Project URL</label>
-                    <input type="url" id="projectLink">
-                </div>
-                <div class="form-group">
-                    <label>GitHub URL</label>
-                    <input type="url" id="projectGithub">
-                </div>
-                <button type="submit" class="btn primary">Save Project</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Blog Post Modal -->
-    <div id="blogModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add Blog Post</h3>
-                <button class="close">&times;</button>
-            </div>
-            <form id="blogForm">
-                <div class="form-group">
-                    <label>Title</label>
-                    <input type="text" id="blogTitle" required>
-                </div>
-                <div class="form-group">
-                    <label>Content</label>
-                    <textarea id="blogContent" rows="10" required></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Tags</label>
-                    <input type="text" id="blogTags" placeholder="Comma-separated list">
-                </div>
-                <div class="form-group">
-                    <label>Featured Image</label>
-                    <input type="file" id="blogImage" accept="image/*">
-                </div>
-                <button type="submit" class="btn primary">Publish Post</button>
-            </form>
-        </div>
-    </div>
-
     <!-- Custom JS -->
     <script type="module" src="js/firebase-config.js"></script>
     <script type="module" src="js/admin.js"></script>
     <script type="module" src="js/password-reset.js"></script>
+    <script type="module">
+        import { loadSkills, updateSkills } from './js/firebase-config.js';
+        
+        // Expose necessary functions to window object
+        window.loadSkills = loadSkills;
+        window.updateSkills = updateSkills;
+    </script>
     <script>
-        // Password Reset Modal Functions
-        function showPasswordResetModal(event) {
-            event.preventDefault();
-            document.getElementById('passwordResetModal').style.display = 'block';
+        // Notification/Toast function
+        function showToast(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-content">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Trigger animation
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+            
+            // Remove notification after 3 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, 3000);
         }
 
-        function closePasswordResetModal() {
-            document.getElementById('passwordResetModal').style.display = 'none';
+        // Theme Detection and Switching
+        function detectAndSetTheme() {
+            const htmlElement = document.documentElement;
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            // Set theme based on system preference
+            const theme = prefersDark ? 'dark' : 'light';
+            htmlElement.setAttribute('data-theme', theme);
+            
+            // Update logo based on theme
+            const logo = document.querySelector('.login-logo');
+            if (logo) {
+                logo.style.filter = theme === 'light' ? 'brightness(0)' : 'none';
+            }
         }
+
+        // Listen for system theme changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', detectAndSetTheme);
+
+        // Initial theme detection
+        detectAndSetTheme();
+
+        // Skill Category Modal Functions
+        function showAddSkillCategoryDialog() {
+            document.getElementById('skillCategoryModal').style.display = 'block';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Add event listener for skill category form
+        document.getElementById('skillCategoryForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const categoryName = document.getElementById('categoryName').value;
+            
+            if (!categoryName) {
+                showToast('Please enter a category name', 'error');
+                return;
+            }
+            
+            try {
+                const skillsData = await window.loadSkills() || [];
+                
+                if (skillsData.some(cat => cat.name === categoryName)) {
+                    showToast('A category with this name already exists', 'error');
+                    return;
+                }
+                
+                skillsData.push({
+                    name: categoryName,
+                    skills: []
+                });
+                
+                await window.updateSkills(skillsData);
+                closeModal('skillCategoryModal');
+                document.getElementById('categoryName').value = '';
+                
+                // Update the skills display immediately
+                const skillsDisplay = document.getElementById('skillsDisplay');
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'skill-category';
+                categoryDiv.innerHTML = `
+                    <div class="skill-category-header">
+                        <h3>${categoryName}</h3>
+                        <div class="category-actions">
+                            <button onclick="editSkillCategory('${categoryName}')" class="btn-icon" title="Edit Category">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deleteSkillCategory('${categoryName}')" class="btn-icon" title="Delete Category">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="skills-list"></div>
+                `;
+                skillsDisplay.appendChild(categoryDiv);
+                
+                // Show success notification with instruction
+                showToast('Skill category added successfully! Click on edit category to add skills.', 'success');
+                
+            } catch (error) {
+                console.error('Error adding category:', error);
+                showToast('Failed to add category', 'error');
+            }
+        });
 
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('passwordResetModal');
-            if (event.target === modal) {
-                modal.style.display = 'none';
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
             }
+        }
+
+        // Password Reset Modal Functions
+        function showPasswordResetModal(event) {
+            event.preventDefault();
+            const modal = document.getElementById('passwordResetModal');
+            modal.style.display = 'flex';
+            modal.classList.add('show');
+        }
+
+        function closePasswordResetModal() {
+            const modal = document.getElementById('passwordResetModal');
+            modal.style.display = 'none';
+            modal.classList.remove('show');
+            // Clear the input field
+            document.getElementById('resetEmail').value = '';
         }
 
         // Handle password reset form submission
@@ -641,6 +1276,24 @@
                 console.error('Error:', error);
             }
         });
+
+        // Password visibility toggle function
+        function togglePassword() {
+            const passwordInput = document.getElementById('adminPassword');
+            const toggleIcon = document.querySelector('.toggle-password');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                passwordInput.classList.add('password-visible');
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            } else {
+                passwordInput.type = 'password';
+                passwordInput.classList.remove('password-visible');
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            }
+        }
     </script>
 </body>
 </html> 

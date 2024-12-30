@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is signed in
+    function isSignedIn() {
+      return request.auth.uid != null;
+    }
+
+    // Content collection (profile, about, experience)
+    match /content/{document} {
+      allow read: if true;  // Anyone can read
+      allow write: if isSignedIn();  // Only authenticated users can write
+    }
+    
+    // Skills collection
+    match /skills/{skillId} {
+      allow read: if true;  // Anyone can read
+      allow write: if isSignedIn();
+    }
+    
+    // Projects collection
+    match /projects/{projectId} {
+      allow read: if true;  // Anyone can read
+      allow write: if isSignedIn();
+    }
+    
+    // Blog posts collection
+    match /blog/{postId} {
+      allow read: if true;  // Anyone can read
+      allow write: if isSignedIn();
+    }
+    
+    // Messages collection
+    match /messages/{messageId} {
+      allow read: if isSignedIn();
+      allow create: if true;  // Anyone can send a message
+      allow delete: if isSignedIn();
+      allow update: if isSignedIn() && 
+          request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['read']); // Only allow updating the 'read' field
+    }
+    
+    // Images collection
+    match /images/{imageId} {
+      allow read: if true;  // Anyone can read
+      allow write: if isSignedIn();
+      
+      // Allow access to image chunks
+      match /chunks/{chunkId} {
+        allow read: if true;  // Anyone can read
+        allow write: if isSignedIn();
+      }
+    }
+
+    // Certifications collection
+    match /certifications/{certId} {
+      allow read: if true;  // Public read access
+      allow write: if isSignedIn();
+    }
+    
+    // Index data
+    match /{path=**}/index/{document} {
+      allow read: if true;  // Anyone can read index data
+      allow write: if isSignedIn();
+    }
+  }
+} 

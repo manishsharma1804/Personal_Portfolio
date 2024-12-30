@@ -206,6 +206,7 @@ async function loadMessages() {
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => ({
             id: doc.id,
+            read: doc.data().read || false,
             ...doc.data()
         }));
     } catch (error) {
@@ -217,9 +218,17 @@ async function loadMessages() {
     }
 }
 
-async function deleteMessageFromDB(id) {
-    const docRef = doc(db, 'messages', id);
-    await deleteDoc(docRef);
+async function markMessageAsRead(id) {
+    try {
+        const docRef = doc(db, 'messages', id);
+        await updateDoc(docRef, {
+            read: true
+        });
+        return true;
+    } catch (error) {
+        console.error('Error marking message as read:', error);
+        throw error;
+    }
 }
 
 // Image Upload Function
@@ -687,7 +696,7 @@ export {
     loadBlogPosts,
     saveContactMessage,
     loadMessages,
-    deleteMessageFromDB,
+    markMessageAsRead,
     loadProfileData,
     updateProfileData,
     uploadImage,

@@ -1,6 +1,6 @@
 // Import Firebase functions and objects
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 import {
     auth,
     db,
@@ -19,18 +19,11 @@ import {
     loadProjects,
     loadBlogPosts,
     loadMessages,
-    deleteMessageFromDB,
-    loadProfileData,
-    updateProfileData,
-    uploadImage,
-    uploadResume,
-    deleteImage,
-    loadSkills,
-    updateSkills,
+    loadCertifications,
     loadProfile,
     updateProfile,
-    loadCertifications,
-    updateCertification
+    loadSkills,
+    updateSkills
 } from './firebase-config.js';
 
 // Theme toggle functionality
@@ -2690,12 +2683,541 @@ async function deleteMessage(messageId) {
     if (confirm('Are you sure you want to delete this message?')) {
         try {
             await deleteMessageFromDB(messageId);
-            loadMessagesSection(); // Reload messages after deletion
+            await loadMessagesSection(); // Reload messages after deletion
+            await createDashboard(); // Update dashboard stats
             showNotification('Message deleted successfully', 'success');
         } catch (error) {
             console.error('Error deleting message:', error);
             showNotification('Failed to delete message', 'error');
         }
+    }
+}
+
+
+
+async function markMessageAsRead(messageId) {
+    try {
+        const messageRef = doc(db, 'messages', messageId);
+        await updateDoc(messageRef, {
+            read: true,
+            readAt: serverTimestamp()
+        });
+        
+        // Update local state
+        const message = currentMessages.find(msg => msg.id === messageId);
+        if (message) {
+            message.read = true;
+            message.readAt = new Date().toISOString();
+        }
+    } catch (error) {
+        console.error('Error marking message as read:', error);
+        throw error;
+    }
+}
+
+async function markMessageAsUnread(messageId) {
+    try {
+        const messageRef = doc(db, 'messages', messageId);
+        await updateDoc(messageRef, {
+            read: false,
+            readAt: null
+        });
+        
+        // Update local state
+        const message = currentMessages.find(msg => msg.id === messageId);
+        if (message) {
+            message.read = false;
+            message.readAt = null;
+        }
+    } catch (error) {
+        console.error('Error marking message as unread:', error);
+        throw error;
+    }
+}
+
+async function toggleMessageRead(messageId, isRead) {
+    try {
+        if (isRead) {
+            await markMessageAsUnread(messageId);
+        } else {
+            await markMessageAsRead(messageId);
+        }
+        await createDashboard();
+        showMessageDetails(messageId);
+        showNotification(`Message marked as ${isRead ? 'unread' : 'read'}`, 'success');
+    } catch (error) {
+        console.error('Error toggling message read status:', error);
+        showNotification('Failed to update message status', 'error');
+    }
+}
+
+async function loadMessagesSection() {
+    try {
+        // Initialize pagination and filter state
+        window.currentPage = 1;
+        window.currentFilters = {
+            read: 'all',
+            date: 'all'
+        };
+
+        // Get messages from database
+        const messages = await getMessagesFromDB();
+        window.currentMessages = messages;
+        
+        // Initialize message list container
+        const messagesContainer = document.getElementById('messagesSection');
+        if (!messagesContainer) {
+            throw new Error('Messages container not found');
+        }
+        
+        messagesContainer.innerHTML = `
+            <div class="section-header">
+                <h2>Messages</h2>
+                <div class="section-actions">
+                    <button class="icon-button" onclick="toggleMessageSearch()">
+                        <i class="fas fa-search"></i>
+                        Search
+                    </button>
+                    <button class="icon-button" onclick="toggleMessageFilter()">
+                        <i class="fas fa-filter"></i>
+                        Filter
+                    </button>
+                </div>
+            </div>
+            <div class="search-bar" style="display: none;">
+                <div class="search-input-container">
+                    <input type="text" placeholder="Search messages..." oninput="handleMessageSearch()">
+                    <button class="clear-search" onclick="clearMessageSearch()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="filter-bar" style="display: none;">
+                <div class="filter-group">
+                    <label>Status:</label>
+                    <select onchange="applyMessageFilters()">
+                        <option value="all">All</option>
+                        <option value="read">Read</option>
+                        <option value="unread">Unread</option>
+                    </select>
+                    <label>Date:</label>
+                    <select onchange="applyMessageFilters()">
+                        <option value="all">All time</option>
+                        <option value="today">Today</option>
+                        <option value="week">This week</option>
+                        <option value="month">This month</option>
+                    </select>
+                    <button class="clear-filters" onclick="clearMessageFilters()">
+                        Clear Filters
+                    </button>
+                </div>
+            </div>
+            <div class="messages-list">
+                <div class="bulk-actions">
+                    <div class="message-checkbox">
+                        <input type="checkbox" onchange="toggleAllMessages()">
+                    </div>
+                    <button class="icon-button" onclick="markSelectedMessagesAsRead()">
+                        <i class="fas fa-envelope-open"></i>
+                        Mark as Read
+                    </button>
+                    <button class="icon-button" onclick="markSelectedMessagesAsUnread()">
+                        <i class="fas fa-envelope"></i>
+                        Mark as Unread
+                    </button>
+                    <button class="icon-button" onclick="deleteSelectedMessages()">
+                        <i class="fas fa-trash"></i>
+                        Delete Selected
+                    </button>
+                </div>
+                <div id="messages-container"></div>
+            </div>
+            <div class="pagination" id="messages-pagination"></div>`;
+
+        // Initialize message handlers
+        initializeMessageListHandlers();
+
+    } catch (error) {
+        console.error('Error loading messages:', error);
+        showNotification('Failed to load messages. Please try again.', 'error');
+    }
+}
+
+function renderMessagesList(messages, page, filters) {
+    if (!messages || messages.length === 0) {
+        return `<div class="no-messages">No messages found</div>`;
+    }
+
+    const startIndex = (page - 1) * 10;
+    const endIndex = startIndex + 10;
+    const displayedMessages = messages.slice(startIndex, endIndex);
+
+    return displayedMessages.map(message => {
+        const date = new Date(message.createdAt);
+        const formattedDate = date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        return `
+            <div class="message-item ${message.read ? '' : 'message-unread'}" data-id="${message.id}">
+                <div class="message-checkbox">
+                    <input type="checkbox" class="message-select" data-id="${message.id}">
+                </div>
+                <div class="message-content" onclick="showMessageDetails(${JSON.stringify(message).replace(/"/g, '&quot;')})">
+                    <div class="message-info">
+                        <div class="message-header">
+                            <span class="message-name">${message.name}</span>
+                            <span class="message-date">${formattedDate}</span>
+                        </div>
+                        <div class="message-email">${message.email}</div>
+                        <div class="message-preview">${message.message.substring(0, 100)}${message.message.length > 100 ? '...' : ''}</div>
+                    </div>
+                </div>
+                <div class="message-actions">
+                    <button class="icon-button" onclick="event.stopPropagation(); toggleMessageRead('${message.id}', ${!message.read})">
+                        <i class="fas ${message.read ? 'fa-envelope' : 'fa-envelope-open'}"></i>
+                    </button>
+                    <button class="icon-button danger" onclick="event.stopPropagation(); deleteMessage('${message.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderPagination(totalMessages, currentPage) {
+    const totalPages = Math.ceil(totalMessages / 10);
+    if (totalPages <= 1) return '';
+
+    let paginationHtml = '<div class="pagination">';
+    
+    // Previous button
+    paginationHtml += `
+        <button ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})">
+            <i class="fas fa-chevron-left"></i>
+        </button>
+    `;
+
+    // Page numbers
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === currentPage) {
+            paginationHtml += `<button class="active">${i}</button>`;
+        } else if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+            paginationHtml += `<button onclick="changePage(${i})">${i}</button>`;
+        } else if (i === currentPage - 2 || i === currentPage + 2) {
+            paginationHtml += '<span class="ellipsis">...</span>';
+        }
+    }
+
+    // Next button
+    paginationHtml += `
+        <button ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})">
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    `;
+
+    paginationHtml += '</div>';
+    return paginationHtml;
+}
+
+function changePage(newPage) {
+    const elements = window.messageElements;
+    if (!elements) return;
+
+    window.currentPage = newPage;
+    renderCurrentView();
+}
+
+// Add styles for new message management system
+const msgStyles = document.createElement('style');
+msgStyles.textContent = `
+    .msg-section-header {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .msg-header-left {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .msg-controls {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .msg-btn {
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background: var(--bg-secondary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+
+    .msg-btn:hover {
+        background: var(--bg-hover);
+    }
+
+    .msg-btn.danger {
+        background: #dc3545;
+        color: white;
+        border-color: #dc3545;
+    }
+
+    .msg-btn.danger:hover {
+        background: #c82333;
+    }
+
+    .msg-search-bar, .msg-filter-bar {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+    }
+
+    .search-input-group {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .search-input-group input {
+        flex: 1;
+        padding: 0.5rem;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+    }
+
+    .msg-list {
+        padding: 1rem;
+    }
+
+    .msg-item {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 1rem;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .msg-item:hover {
+        background: var(--bg-hover);
+    }
+
+    .msg-unread {
+        background: var(--bg-unread);
+    }
+
+    .msg-checkbox {
+        display: flex;
+        align-items: center;
+    }
+
+    .msg-checkbox input {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .msg-content {
+        flex: 1;
+    }
+
+    .msg-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.5rem;
+    }
+
+    .msg-sender h4 {
+        margin: 0;
+        color: var(--text-primary);
+    }
+
+    .msg-sender p {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .msg-meta {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .msg-date {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .msg-preview {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+    }
+
+    .msg-pagination {
+        padding: 1rem;
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .msg-page-btn {
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background: var(--bg-secondary);
+        cursor: pointer;
+    }
+
+    .msg-page-btn.active {
+        background: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
+    }
+
+    .msg-page-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .msg-empty {
+        text-align: center;
+        padding: 2rem;
+        color: var(--text-secondary);
+    }
+`;
+
+document.head.appendChild(msgStyles);
+
+// Function to toggle all message checkboxes
+function toggleAllMessages() {
+    const checkboxes = document.querySelectorAll('.message-select');
+    const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+    });
+}
+
+// Function to delete selected messages
+async function deleteSelectedMessages() {
+    const selectedMessages = document.querySelectorAll('.message-select:checked');
+    if (selectedMessages.length === 0) {
+        showNotification('No messages selected', 'error');
+        return;
+    }
+
+    if (confirm(`Are you sure you want to delete ${selectedMessages.length} selected message(s)?`)) {
+        try {
+            const deletePromises = Array.from(selectedMessages).map(checkbox => {
+                const messageId = checkbox.closest('.message-item').dataset.messageId;
+                return deleteMessageFromDB(messageId);
+            });
+
+            await Promise.all(deletePromises);
+            await loadMessagesSection();
+            await createDashboard();
+            showNotification('Selected messages deleted successfully', 'success');
+        } catch (error) {
+            console.error('Error deleting messages:', error);
+            showNotification('Failed to delete some messages', 'error');
+        }
+    }
+}
+
+// Function to delete all messages
+async function deleteAllMessages() {
+    if (currentMessages.length === 0) {
+        showNotification('No messages to delete', 'error');
+        return;
+    }
+
+    if (confirm(`Are you sure you want to delete all ${currentMessages.length} messages? This action cannot be undone.`)) {
+        try {
+            const deletePromises = currentMessages.map(message => deleteMessageFromDB(message.id));
+            await Promise.all(deletePromises);
+            await loadMessagesSection();
+            await createDashboard();
+            showNotification('All messages deleted successfully', 'success');
+        } catch (error) {
+            console.error('Error deleting all messages:', error);
+            showNotification('Failed to delete all messages', 'error');
+        }
+    }
+}
+
+// Add to window object
+window.toggleAllMessages = toggleAllMessages;
+window.deleteSelectedMessages = deleteSelectedMessages;
+window.deleteAllMessages = deleteAllMessages;
+
+function showMessageDetails(message) {
+    const messagesContent = document.getElementById('messagesContent');
+    const date = new Date(message.createdAt);
+    const formattedDate = date.toLocaleDateString();
+    const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    const detailsView = `
+        <div class="message-details">
+            <div class="details-header">
+                <button onclick="loadMessagesSection()" class="btn-icon" title="Back to Messages">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <h3>Message Details</h3>
+            </div>
+            <div class="details-content">
+                <div class="sender-info">
+                    <h4>${message.name}</h4>
+                    <p>${message.email}</p>
+                    <p class="date">${formattedDate} ${formattedTime}</p>
+                </div>
+                <div class="message-body">
+                    <p>${message.message}</p>
+                </div>
+                <div class="details-actions">
+                    <button onclick="window.location.href='mailto:${message.email}'" class="btn primary">
+                        <i class="fas fa-reply"></i> Reply
+                    </button>
+                    <button onclick="deleteMessage('${message.id}')" class="btn danger">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    messagesContent.innerHTML = detailsView;
+}
+
+// Add to window object
+window.deleteMessage = deleteMessage;
+window.toggleMessageRead = toggleMessageRead;
+window.loadMessagesSection = loadMessagesSection;
+
+async function createDashboard() {
+    try {
+        // Update counts
+        document.getElementById('projectCount').textContent = currentProjects.length;
+        document.getElementById('blogCount').textContent = currentPosts.length;
+        document.getElementById('messageCount').textContent = currentMessages.length;
+        
+        // Update unread count
+        const unreadCount = currentMessages.filter(msg => !msg.read).length;
+        document.getElementById('unreadCount').textContent = unreadCount;
+    } catch (error) {
+        console.error('Error creating dashboard:', error);
     }
 }
 
@@ -3583,69 +4105,6 @@ async function confirmDeleteCategory(categoryName, button) {
 // Add to window object
 window.confirmDeleteCategory = confirmDeleteCategory;
 
-async function loadMessagesSection() {
-    try {
-        const messages = await loadMessages();
-        currentMessages = messages || [];
-        const messagesSection = document.getElementById('messagesSection');
-        
-        // Create read-only view
-        const readView = document.createElement('div');
-        readView.className = 'read-view';
-        readView.innerHTML = `
-            <div class="section-header">
-                <h2>Messages</h2>
-            </div>
-            <div class="section-content">
-                <div id="messagesList" class="messages-list">
-                    ${currentMessages.map(message => {
-                        const emailBody = `Dear ${message.name},\n\nThank you for your message:\n\n"${message.message}"\n\n`;
-                        const encodedBody = encodeURIComponent(emailBody);
-                        
-                        return `
-                            <div class="message-item">
-                                <div class="message-header">
-                                    <div class="sender-info">
-                                        <h4>${message.name}</h4>
-                                        <p>${message.email}</p>
-                                    </div>
-                                    <div class="message-date">
-                                        ${new Date(message.createdAt).toLocaleDateString()}
-                                    </div>
-                                </div>
-                                <div class="message-content">
-                                    <p>${message.message}</p>
-                                </div>
-                                <div class="message-actions">
-                                    <a href="mailto:${message.email}?subject=Re: Message from Portfolio Website&body=${encodedBody}" 
-                                        class="btn-icon" title="Reply to Email">
-                                        <i class="fas fa-reply"></i>
-                                    </a>
-                                    <button onclick="deleteMessage('${message.id}')" class="btn-icon" title="Delete">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-        `;
-
-        // Update the section content
-        const existingReadView = messagesSection.querySelector('.read-view');
-        if (existingReadView) {
-            existingReadView.replaceWith(readView);
-        } else {
-            messagesSection.appendChild(readView);
-        }
-
-    } catch (error) {
-        console.error('Error loading messages:', error);
-        alert('Failed to load messages');
-    }
-}
-
 // Add to window object
 window.loadMessagesSection = loadMessagesSection; 
 
@@ -3889,104 +4348,1136 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Function to create dashboard
-function createDashboard() {
-    // Get dashboard section
-    const dashboardSection = document.getElementById('dashboardSection');
-    dashboardSection.innerHTML = '';
 
-    // Add styles
-    const style = document.createElement('style');
-    style.textContent = `
-        .dashboard {
-            width: 100%;
-            padding: 2rem;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .card {
-            background: var(--card-background);
-            border-radius: 15px;
-            padding: 2rem;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-            border: 2px solid ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'};
-        }
-        .card:hover {
-            transform: translateY(-5px);
-            border-color: var(--primary-color);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-        }
-        .card h3 {
-            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#1a1a1a'};
-            margin: 0 0 1rem;
-            font-size: 1.8rem;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        .count {
-            font-size: 3.5rem;
-            font-weight: bold;
-            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#8bb9dd' : '#2a6496'};
-            margin: 1rem 0;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .icon {
-            position: absolute;
-            top: 1.5rem;
-            right: 1.5rem;
-            font-size: 2rem;
-            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#1a1a1a'};
-            opacity: 0.8;
-        }
-        @media (max-width: 768px) {
-            .dashboard {
-                padding: 1rem;
-                grid-template-columns: 1fr;
-            }
-            .card {
-                padding: 1.5rem;
-            }
-            .count {
-                font-size: 3rem;
-            }
-            .icon {
-                font-size: 1.8rem;
-            }
-        }
-    `;
-    document.head.appendChild(style);
+// Add these lines at the end of your admin.js file
+window.addSkillCategory = addSkillCategory;
+window.loadSkillsContent = loadSkillsContent;
+window.showNotification = showNotification;
 
-    // Create dashboard container
-    const dashboard = document.createElement('div');
-    dashboard.className = 'dashboard';
+// Add styles for message management
+const messageStyles = document.createElement('style');
+messageStyles.textContent = `
+    .bulk-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
 
-    // Create cards for projects, blog posts, and messages
-    const cards = [
-        { title: 'Projects', count: '0', icon: '⌨️' },
-        { title: 'Blog Posts', count: '0', icon: '📝' },
-        { title: 'Messages', count: '13', icon: '✉️' }
-    ];
+    .message-checkbox {
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+    }
 
-    cards.forEach(card => {
-        const cardElement = document.createElement('div');
-        cardElement.className = 'card';
-        cardElement.innerHTML = `
-            <span class="icon">${card.icon}</span>
-            <h3>${card.title}</h3>
-            <div class="count">${card.count}</div>
-        `;
-        dashboard.appendChild(cardElement);
-    });
+    .message-checkbox input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+    }
 
-    // Add dashboard to the section
-    dashboardSection.appendChild(dashboard);
+    .message-item {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        padding: 15px;
+        border-bottom: 1px solid #eee;
+        transition: background-color 0.3s;
+    }
+
+    .message-item:hover {
+        background-color: #f8f9fa;
+    }
+
+    .message-unread {
+        background-color: #f0f7ff;
+    }
+
+    .message-unread:hover {
+        background-color: #e5f1ff;
+    }
+
+    .message-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn.danger {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .btn.danger:hover {
+        background-color: #c82333;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        border-bottom: 1px solid #eee;
+    }
+
+    /* Message Section Styles */
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 0.5rem 0;
+    }
+    
+    .section-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .icon-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .icon-button:hover {
+        background: #f5f5f5;
+    }
+    
+    .icon-button.active {
+        background: #e0e0e0;
+    }
+    
+    /* Search Bar Styles */
+    .search-bar {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    
+    .search-input-container {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .search-input-container input {
+        flex: 1;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    
+    .clear-search {
+        padding: 0.5rem;
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: #666;
+    }
+    
+    .clear-search:hover {
+        color: #333;
+    }
+    
+    /* Filter Bar Styles */
+    .filter-bar {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    
+    .filter-group {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+    
+    .filter-group select {
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+    }
+    
+    .clear-filters {
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+    }
+    
+    .clear-filters:hover {
+        background: #f5f5f5;
+    }
+    
+    /* Messages List Styles */
+    .messages-list {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .msg-item {
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1px solid #ddd;
+        background: white;
+        transition: background-color 0.2s;
+    }
+    
+    .msg-item:last-child {
+        border-bottom: none;
+    }
+    
+    .msg-item:hover {
+        background: #f9f9f9;
+    }
+    
+    .msg-item.unread {
+        background: #f0f7ff;
+    }
+    
+    .msg-item.unread:hover {
+        background: #e5f0ff;
+    }
+    
+    .msg-checkbox {
+        display: none;
+        align-items: center;
+        padding: 1rem;
+        border-right: 1px solid #ddd;
+    }
+    
+    .msg-content {
+        flex: 1;
+        display: flex;
+        padding: 1rem;
+        cursor: pointer;
+    }
+    
+    .msg-icon {
+        display: flex;
+        align-items: center;
+        padding-right: 1rem;
+        color: #666;
+    }
+    
+    .msg-info {
+        flex: 1;
+    }
+    
+    .msg-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.25rem;
+    }
+    
+    .msg-name {
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .msg-date {
+        color: #666;
+        font-size: 0.9em;
+    }
+    
+    .msg-email {
+        color: #666;
+        margin-bottom: 0.25rem;
+        font-size: 0.9em;
+    }
+    
+    .msg-preview {
+        color: #666;
+        font-size: 0.9em;
+        line-height: 1.4;
+    }
+    
+    .no-messages {
+        padding: 2rem;
+        text-align: center;
+        color: #666;
+    }
+    
+    /* Pagination Styles */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 0.25rem;
+        margin-top: 1rem;
+    }
+    
+    .pagination button {
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+    }
+    
+    .pagination button:hover:not(:disabled) {
+        background: #f5f5f5;
+    }
+    
+    .pagination button.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .pagination button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .pagination .ellipsis {
+        padding: 0.5rem;
+        color: #666;
+    }
+    
+    /* Message Detail Styles */
+    .message-detail {
+        background: white;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .message-detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .back-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .back-button:hover {
+        background: #f5f5f5;
+    }
+    
+    .message-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .message-actions button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .message-actions button:hover {
+        background: #f5f5f5;
+    }
+    
+    .message-actions .delete-button {
+        border-color: #dc3545;
+        color: #dc3545;
+    }
+    
+    .message-actions .delete-button:hover {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .message-detail-content {
+        padding: 2rem;
+    }
+    
+    .message-detail-info {
+        margin-bottom: 2rem;
+    }
+    
+    .message-detail-info h3 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+    }
+    
+    .message-detail-email {
+        margin: 0 0 0.25rem 0;
+        color: #666;
+    }
+    
+    .message-detail-date {
+        margin: 0;
+        color: #666;
+        font-size: 0.9em;
+    }
+    
+    .message-detail-body {
+        color: #333;
+        line-height: 1.6;
+    }
+    
+    .message-detail-body p {
+        margin: 0 0 1rem 0;
+    }
+    
+    .message-detail-body p:last-child {
+        margin-bottom: 0;
+    }
+`;
+
+document.head.appendChild(messageStyles);
+
+// Message state management
+let currentPage = 1;
+let currentFilters = {
+    search: '',
+    status: 'all',
+    date: 'all'
+};
+
+// Initialize message list handlers
+function initializeMessageListHandlers() {
+    const searchToggle = document.querySelector('.icon-button[onclick="toggleMessageSearch()"]');
+    const filterToggle = document.querySelector('.icon-button[onclick="toggleMessageFilter()"]');
+    const searchBar = document.querySelector('.search-bar');
+    const filterBar = document.querySelector('.filter-bar');
+    const messagesContainer = document.getElementById('messages-container');
+    const pagination = document.getElementById('messages-pagination');
+
+    if (!searchToggle || !filterToggle || !searchBar || !filterBar || !messagesContainer || !pagination) {
+        console.error('Required message elements not found');
+        return;
+    }
+
+    // Store references to DOM elements
+    window.messageElements = {
+        searchToggle,
+        filterToggle,
+        searchBar,
+        filterBar,
+        messagesContainer,
+        pagination,
+        searchVisible: false,
+        filterVisible: false
+    };
+
+    // Initial render
+    renderCurrentView();
 }
+
+// Toggle message selection mode
+function toggleMessageSelection() {
+    const checkboxes = document.querySelectorAll('.msg-checkbox');
+    const bulkActions = document.getElementById('msgBulkActions');
+    const selectToggle = document.getElementById('msgSelectToggle');
+    
+    const isSelectionMode = checkboxes[0]?.style.display === 'flex';
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.style.display = isSelectionMode ? 'none' : 'flex';
+        checkbox.querySelector('input').checked = false;
+    });
+    
+    bulkActions.style.display = isSelectionMode ? 'none' : 'flex';
+    selectToggle.classList.toggle('active', !isSelectionMode);
+}
+
+// Handle message selection
+function handleMessageSelect(event) {
+    event.stopPropagation();
+    updateBulkActionState();
+}
+
+// Select all visible messages
+function selectAllVisibleMessages() {
+    const checkboxes = document.querySelectorAll('.msg-checkbox input:not([disabled])');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+    });
+    
+    updateBulkActionState();
+}
+
+// Update bulk action buttons state
+function updateBulkActionState() {
+    const selectedCount = document.querySelectorAll('.msg-checkbox input:checked').length;
+    const bulkButtons = document.querySelectorAll('#msgBulkActions button:not(#msgSelectAll)');
+    
+    bulkButtons.forEach(button => {
+        button.disabled = selectedCount === 0;
+    });
+}
+
+// Toggle search bar
+function toggleMessageSearch() {
+    const elements = window.messageElements;
+    if (!elements) return;
+    
+    elements.searchVisible = !elements.searchVisible;
+    elements.filterVisible = false;
+    renderCurrentView();
+}
+
+// Handle message search
+function handleMessageSearch() {
+    const searchInput = document.getElementById('msgSearchInput');
+    currentFilters.search = searchInput.value.toLowerCase();
+    currentPage = 1;
+    renderCurrentView();
+}
+
+// Clear message search
+function clearMessageSearch() {
+    const searchInput = document.getElementById('msgSearchInput');
+    searchInput.value = '';
+    currentFilters.search = '';
+    renderCurrentView();
+}
+
+// Toggle filter bar
+function toggleMessageFilter() {
+    const elements = window.messageElements;
+    if (!elements) return;
+    
+    elements.filterVisible = !elements.filterVisible;
+    elements.searchVisible = false;
+    renderCurrentView();
+}
+
+// Apply message filters
+function applyMessageFilters() {
+    const statusFilter = document.getElementById('msgStatusFilter');
+    const dateFilter = document.getElementById('msgDateFilter');
+    
+    currentFilters.status = statusFilter.value;
+    currentFilters.date = dateFilter.value;
+    currentPage = 1;
+    renderCurrentView();
+}
+
+// Clear message filters
+function clearMessageFilters() {
+    const statusFilter = document.getElementById('msgStatusFilter');
+    const dateFilter = document.getElementById('msgDateFilter');
+    
+    statusFilter.value = 'all';
+    dateFilter.value = 'all';
+    currentFilters.status = 'all';
+    currentFilters.date = 'all';
+    renderCurrentView();
+}
+
+// Filter messages based on current filters
+function filterMessages(messages, filters) {
+    return messages.filter(message => {
+        // Search filter
+        if (filters.search) {
+            const searchTerm = filters.search.toLowerCase();
+            const matchesSearch = message.name.toLowerCase().includes(searchTerm) ||
+                                message.email.toLowerCase().includes(searchTerm);
+            if (!matchesSearch) return false;
+        }
+        
+        // Status filter
+        if (filters.status !== 'all') {
+            const isRead = message.read;
+            if (filters.status === 'read' && !isRead) return false;
+            if (filters.status === 'unread' && isRead) return false;
+        }
+        
+        // Date filter
+        if (filters.date !== 'all') {
+            const messageDate = new Date(message.createdAt);
+            const now = new Date();
+            
+            switch (filters.date) {
+                case 'today':
+                    if (!isSameDay(messageDate, now)) return false;
+                    break;
+                case 'week':
+                    if (!isThisWeek(messageDate, now)) return false;
+                    break;
+                case 'month':
+                    if (!isThisMonth(messageDate, now)) return false;
+                    break;
+            }
+        }
+        
+        return true;
+    });
+}
+
+// Date helper functions
+function isSameDay(date1, date2) {
+    return date1.getDate() === date2.getDate() &&
+           date1.getMonth() === date2.getMonth() &&
+           date1.getFullYear() === date2.getFullYear();
+}
+
+function isThisWeek(date, now) {
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    
+    return date >= weekStart && date <= weekEnd;
+}
+
+function isThisMonth(date, now) {
+    return date.getMonth() === now.getMonth() &&
+           date.getFullYear() === now.getFullYear();
+}
+
+
+
+// Render current view based on filters and pagination
+function renderCurrentView() {
+    const elements = window.messageElements;
+    if (!elements) {
+        console.error('Message elements not initialized');
+        return;
+    }
+
+    // Update search bar visibility
+    if (elements.searchBar) {
+        elements.searchBar.style.display = elements.searchVisible ? 'block' : 'none';
+        if (elements.searchToggle) {
+            elements.searchToggle.classList.toggle('active', elements.searchVisible);
+        }
+    }
+
+    // Update filter bar visibility
+    if (elements.filterBar) {
+        elements.filterBar.style.display = elements.filterVisible ? 'block' : 'none';
+        if (elements.filterToggle) {
+            elements.filterToggle.classList.toggle('active', elements.filterVisible);
+        }
+    }
+
+    // Get current messages and filters
+    const messages = window.currentMessages || [];
+    const filters = window.currentFilters || { read: 'all', date: 'all' };
+    const page = window.currentPage || 1;
+
+    // Apply filters
+    const filteredMessages = filterMessages(messages, filters);
+
+    // Render messages
+    if (elements.messagesContainer) {
+        elements.messagesContainer.innerHTML = renderMessagesList(filteredMessages, page, filters);
+    }
+
+    // Render pagination
+    if (elements.pagination) {
+        elements.pagination.innerHTML = renderPagination(filteredMessages.length, page);
+    }
+}
+
+// Bulk action handlers
+async function markSelectedMessagesAsRead() {
+    const selectedMessages = getSelectedMessageIds();
+    if (selectedMessages.length === 0) return;
+    
+    try {
+        const updatePromises = selectedMessages.map(messageId => markMessageAsRead(messageId));
+        await Promise.all(updatePromises);
+        await createDashboard();
+        renderCurrentView();
+        showNotification('Messages marked as read', 'success');
+    } catch (error) {
+        console.error('Error marking messages as read:', error);
+        showNotification('Failed to mark messages as read', 'error');
+    }
+}
+
+async function markSelectedMessagesAsUnread() {
+    const selectedMessages = getSelectedMessageIds();
+    if (selectedMessages.length === 0) return;
+    
+    try {
+        const updatePromises = selectedMessages.map(messageId => markMessageAsUnread(messageId));
+        await Promise.all(updatePromises);
+        await createDashboard();
+        renderCurrentView();
+        showNotification('Messages marked as unread', 'success');
+    } catch (error) {
+        console.error('Error marking messages as unread:', error);
+        showNotification('Failed to mark messages as unread', 'error');
+    }
+}
+
+
+
+// Helper function to get selected message IDs
+function getSelectedMessageIds() {
+    return Array.from(document.querySelectorAll('.msg-checkbox input:checked'))
+        .map(checkbox => checkbox.closest('.msg-item').dataset.messageId);
+}
+
+// Add to window object
+window.toggleMessageSelection = toggleMessageSelection;
+window.handleMessageSelect = handleMessageSelect;
+window.selectAllVisibleMessages = selectAllVisibleMessages;
+window.toggleMessageSearch = toggleMessageSearch;
+window.handleMessageSearch = handleMessageSearch;
+window.clearMessageSearch = clearMessageSearch;
+window.toggleMessageFilter = toggleMessageFilter;
+window.applyMessageFilters = applyMessageFilters;
+window.clearMessageFilters = clearMessageFilters;
+window.changePage = changePage;
+window.markSelectedMessagesAsRead = markSelectedMessagesAsRead;
+window.markSelectedMessagesAsUnread = markSelectedMessagesAsUnread;
+window.deleteSelectedMessages = deleteSelectedMessages;
+
+// Add styles for message management UI
+const style = document.createElement('style');
+style.textContent = `
+    /* Message Section Styles */
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 0.5rem 0;
+    }
+    
+    .section-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .icon-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .icon-button:hover {
+        background: #f5f5f5;
+    }
+    
+    .icon-button.active {
+        background: #e0e0e0;
+    }
+    
+    /* Search Bar Styles */
+    .search-bar {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    
+    .search-input-container {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .search-input-container input {
+        flex: 1;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    
+    .clear-search {
+        padding: 0.5rem;
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: #666;
+    }
+    
+    .clear-search:hover {
+        color: #333;
+    }
+    
+    /* Filter Bar Styles */
+    .filter-bar {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    
+    .filter-group {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+    
+    .filter-group select {
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+    }
+    
+    .clear-filters {
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+    }
+    
+    .clear-filters:hover {
+        background: #f5f5f5;
+    }
+    
+    /* Bulk Actions Styles */
+    .bulk-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    
+    .bulk-actions button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+    }
+    
+    .bulk-actions button:hover:not(:disabled) {
+        background: #f5f5f5;
+    }
+    
+    .bulk-actions button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    /* Messages List Styles */
+    .messages-list {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .msg-item {
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1px solid #ddd;
+        background: white;
+        transition: background-color 0.2s;
+    }
+    
+    .msg-item:last-child {
+        border-bottom: none;
+    }
+    
+    .msg-item:hover {
+        background: #f9f9f9;
+    }
+    
+    .msg-item.unread {
+        background: #f0f7ff;
+    }
+    
+    .msg-item.unread:hover {
+        background: #e5f0ff;
+    }
+    
+    .msg-checkbox {
+        display: none;
+        align-items: center;
+        padding: 1rem;
+        border-right: 1px solid #ddd;
+    }
+    
+    .msg-content {
+        flex: 1;
+        display: flex;
+        padding: 1rem;
+        cursor: pointer;
+    }
+    
+    .msg-icon {
+        display: flex;
+        align-items: center;
+        padding-right: 1rem;
+        color: #666;
+    }
+    
+    .msg-info {
+        flex: 1;
+    }
+    
+    .msg-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.25rem;
+    }
+    
+    .msg-name {
+        font-weight: bold;
+        color: #333;
+    }
+    
+    .msg-date {
+        color: #666;
+        font-size: 0.9em;
+    }
+    
+    .msg-email {
+        color: #666;
+        margin-bottom: 0.25rem;
+        font-size: 0.9em;
+    }
+    
+    .msg-preview {
+        color: #666;
+        font-size: 0.9em;
+        line-height: 1.4;
+    }
+    
+    .no-messages {
+        padding: 2rem;
+        text-align: center;
+        color: #666;
+    }
+    
+    /* Pagination Styles */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        gap: 0.25rem;
+        margin-top: 1rem;
+    }
+    
+    .pagination button {
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+    }
+    
+    .pagination button:hover:not(:disabled) {
+        background: #f5f5f5;
+    }
+    
+    .pagination button.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    .pagination button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    
+    .pagination .ellipsis {
+        padding: 0.5rem;
+        color: #666;
+    }
+    
+    /* Message Detail Styles */
+    .message-detail {
+        background: white;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .message-detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    .back-button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .back-button:hover {
+        background: #f5f5f5;
+    }
+    
+    .message-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .message-actions button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .message-actions button:hover {
+        background: #f5f5f5;
+    }
+    
+    .message-actions .delete-button {
+        border-color: #dc3545;
+        color: #dc3545;
+    }
+    
+    .message-actions .delete-button:hover {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .message-detail-content {
+        padding: 2rem;
+    }
+    
+    .message-detail-info {
+        margin-bottom: 2rem;
+    }
+    
+    .message-detail-info h3 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+    }
+    
+    .message-detail-email {
+        margin: 0 0 0.25rem 0;
+        color: #666;
+    }
+    
+    .message-detail-date {
+        margin: 0;
+        color: #666;
+        font-size: 0.9em;
+    }
+    
+    .message-detail-body {
+        color: #333;
+        line-height: 1.6;
+    }
+    
+    .message-detail-body p {
+        margin: 0 0 1rem 0;
+    }
+    
+    .message-detail-body p:last-child {
+        margin-bottom: 0;
+    }
+`;
+
+document.head.appendChild(style);
+
+
+
+// Helper function to format message body with paragraphs
+function formatMessageBody(text) {
+    return text.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => `<p>${line}</p>`)
+        .join('');
+}
+
+
+
+async function getMessagesFromDB() {
+    try {
+        const messagesRef = collection(db, 'messages');
+        const q = query(messagesRef, orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        
+        return querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            let timestamp = new Date().toISOString(); // default to current time
+
+            // Handle different timestamp formats
+            if (data.createdAt) {
+                if (typeof data.createdAt.toDate === 'function') {
+                    // Firestore Timestamp
+                    timestamp = data.createdAt.toDate().toISOString();
+                } else if (data.createdAt instanceof Date) {
+                    // JavaScript Date
+                    timestamp = data.createdAt.toISOString();
+                } else if (typeof data.createdAt === 'string') {
+                    // ISO String
+                    timestamp = data.createdAt;
+                }
+            }
+
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: timestamp
+            };
+        });
+    } catch (error) {
+        console.error('Error getting messages from database:', error);
+        throw error;
+    }
+}
+
+// Add to window object
+window.toggleMessageRead = toggleMessageRead;
+window.deleteMessage = deleteMessage;
+window.changePage = changePage;
+window.toggleMessageSearch = toggleMessageSearch;
+window.toggleMessageFilter = toggleMessageFilter;
+window.handleMessageSearch = handleMessageSearch;
+window.clearMessageSearch = clearMessageSearch;
+window.applyMessageFilters = applyMessageFilters;
+window.clearMessageFilters = clearMessageFilters;
+window.toggleAllMessages = toggleAllMessages;
+window.markSelectedMessagesAsRead = markSelectedMessagesAsRead;
+window.markSelectedMessagesAsUnread = markSelectedMessagesAsUnread;
+window.deleteSelectedMessages = deleteSelectedMessages;
+window.showMessageDetails = showMessageDetails;
 
 
 
