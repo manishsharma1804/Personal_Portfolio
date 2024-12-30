@@ -1086,37 +1086,22 @@ function updateStoredAuthData(attempts, lockUntil = null) {
     }));
 }
 
-// Fun error messages for different scenarios
+// Error messages
 const errorMessages = {
-    invalidEmail: [
-        "Oh! Looks like you're not part of our secret club yet! 🎭",
-        "Hmm... This email isn't on our VIP list! 🤔",
-        "Sorry, but this area is for authorized personnel only! 🚫",
-        "Go get yourself a role first, then we'll talk! 😉",
-        "Are you sure you work here? I don't recognize that email! 🧐",
-        "This isn't like breaking into a candy store... you need proper access! 🍬",
-        "Nice try, but this email isn't in our cool kids list! 😎",
-        "Houston, we have a problem... that email doesn't exist! 🚀"
-    ],
-    invalidPassword: [
-        "Oops! That password isn't quite right! 🤫",
-        "Did you forget something? The password maybe? 🤔",
-        "Almost there, but not quite! Try again! 🎯",
-        "That's not the secret word we're looking for! 🔐",
-        "Close... but no cigar! Want to try again? 🎲",
-        "Nope, that's not it! Keep guessing! 🎮",
-        "Wrong password! Did you check under your pillow? 🛏️",
-        "The password fairy says that's incorrect! ✨"
+    invalidCredentials: [
+        "Invalid email or password. Please try again! 🔒",
+        "Oops! Your credentials don't match our records! 🤔",
+        "Access denied! Please check your details and try again! 🚫"
     ],
     tooManyAttempts: [
-        "Whoa there! You're being a bit too persistent! 😅",
-        "Oh no! You're really determined, aren't you? 🧐",
-        "Maybe take a break and come back later? ⏰",
-        "I'm starting to think you're not supposed to be here... 🕵️‍♂️",
-        "You're really testing my patience now... 🤨",
-        "This is getting suspicious... are you a hacker? 👨‍💻",
-        "Time for a timeout! Let me think what to do with you... ⌛",
-        "You're quite persistent! But I can do this all day! 🦾"
+        "Too many login attempts! Please wait before trying again! 🛑",
+        "Security check: Time to take a short break! ⏳",
+        "Account protection activated. Please wait! 🛡️"
+    ],
+    firebaseLimit: [
+        "Too many requests from this device! Please wait... ⚠️",
+        "System protection activated. Try again later! 🔒",
+        "Request limit reached. Take a break and try again! 🚫"
     ]
 };
 
@@ -1132,21 +1117,9 @@ function showAuthError(type, waitTime = 30) {
     const loginForm = document.getElementById('adminLoginForm');
     const loginBox = document.querySelector('.login-box');
     
-    // Get random message based on type and attempts
-    let messages = errorMessages[type];
-    if (type === 'tooManyAttempts') {
-        messages = [
-            "Whoa there! Too many login attempts! 🛑",
-            "Security check: Please wait before trying again! 🔒",
-            "System is taking a breather. Try again later! ⏳",
-            "Too many attempts detected. Time for a short break! 🚫",
-            "Account protection activated. Please wait! 🛡️"
-        ];
-    }
+    // Get random message based on type
+    const messages = errorMessages[type];
     const message = messages[Math.floor(Math.random() * messages.length)];
-
-    // Store original content
-    const originalContent = loginBox.innerHTML;
 
     // Create error content
     const errorContent = `
@@ -1166,12 +1139,11 @@ function showAuthError(type, waitTime = 30) {
                 transition: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
                 transition-delay: 0.1s !important;
             ">
-                ${type === 'invalidEmail' ? '🤷‍♂️' : type === 'invalidPassword' ? '🔒' : '⚠️'}
+                ${type === 'invalidCredentials' ? '🔒' : '⚠️'}
             </div>
             <div style="
-                font-size: 2rem !important;
-                margin-bottom: 1.5rem !important;
-                font-weight: 600 !important;
+                font-size: 1.5rem !important;
+                margin-bottom: 1rem !important;
                 transform: translateY(20px) !important;
                 opacity: 0;
                 transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
@@ -1180,22 +1152,20 @@ function showAuthError(type, waitTime = 30) {
                 Access Denied!
             </div>
             <div style="
-                color: #cccccc !important;
+                font-size: 1.1rem !important;
                 margin-bottom: 2rem !important;
-                font-size: 1.3rem !important;
-                line-height: 1.6 !important;
                 transform: translateY(20px) !important;
                 opacity: 0;
                 transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
                 transition-delay: 0.3s !important;
             ">
                 ${message}
-                ${authAttempts >= 3 ? `
-                    <div style="
+                ${(type === 'tooManyAttempts' || type === 'firebaseLimit') ? `
+                    <div id="timer" style="
                         margin-top: 1rem !important;
-                        color: #ff6b6b !important;
-                        animation: pulse 2s infinite !important;
-                    " id="timer">
+                        font-size: 0.9rem !important;
+                        color: #ff4b4b !important;
+                    ">
                         Please wait for ${formatTime(waitTime)} before trying again...
                     </div>
                 ` : ''}
@@ -1220,12 +1190,12 @@ function showAuthError(type, waitTime = 30) {
                 opacity: 0;
                 transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
                 transition-delay: 0.4s !important;
-                ${authAttempts >= 3 ? 'opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(1) !important;' : ''}
+                ${(type === 'tooManyAttempts' || type === 'firebaseLimit') ? 'opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(1) !important;' : ''}
             ">
                 Let me try again
-                    </button>
-                </div>
-            `;
+            </button>
+        </div>
+    `;
 
     // Add transition to login box
     loginBox.style.transition = 'all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
@@ -1267,7 +1237,7 @@ function showAuthError(type, waitTime = 30) {
         // Handle try again button
         const tryAgainButton = loginBox.querySelector('.error-message-button');
         if (tryAgainButton) {
-            if (authAttempts >= 3) {
+            if (type === 'tooManyAttempts' || type === 'firebaseLimit') {
                 let timeLeft = waitTime;
                 const timerElement = loginBox.querySelector('#timer');
                 const timerInterval = setInterval(() => {
@@ -1290,6 +1260,10 @@ function showAuthError(type, waitTime = 30) {
                     }
                 }, 1000);
             } else {
+                // For non-tooManyAttempts errors, always enable the button
+                tryAgainButton.style.opacity = '1';
+                tryAgainButton.style.cursor = 'pointer';
+                tryAgainButton.style.filter = 'none';
                 tryAgainButton.addEventListener('click', restoreLoginForm);
             }
         }
@@ -1300,9 +1274,6 @@ function showAuthError(type, waitTime = 30) {
         // Refresh the page instead of manually restoring the form
         window.location.reload();
     }
-
-    // Increment attempts counter
-    authAttempts++;
 }
 
 // Function to show loader after login
@@ -1514,74 +1485,41 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (even
     }
 
     try {
-        // Basic email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            authAttempts++;
-            updateStoredAuthData(authAttempts);
-            showAuthError('invalidEmail');
-            return;
-        }
-
         // Attempt login
         await signInWithEmailAndPassword(auth, email, password);
-        
         // Reset attempts on successful login
         updateStoredAuthData(0);
         authAttempts = 0;
-        
         // Show loader after successful login
         await showLoader();
-        
     } catch (error) {
         console.error('Login error:', error);
         
-        // Handle too many attempts first
+        // Handle error cases
         if (error.code === 'auth/too-many-requests') {
-            // Extract time info from error message if available
             const timeMatch = error.message.match(/Try again in (\d+) seconds/);
             const waitTime = timeMatch ? parseInt(timeMatch[1]) : 30;
-            
-            // Set lockout period
             const lockUntil = new Date().getTime() + (waitTime * 1000);
             authAttempts = 3;
             updateStoredAuthData(authAttempts, lockUntil);
-            showAuthError('tooManyAttempts', waitTime);
+            showAuthError('firebaseLimit', waitTime);
             return;
         }
-
+        
         // Increment attempts
         authAttempts++;
-        
-        // Check if too many local attempts
+        updateStoredAuthData(authAttempts);
+
+        // Show too many attempts error if needed
         if (authAttempts >= 3) {
-            // Set 30-second lockout period
             const lockUntil = new Date().getTime() + (30 * 1000);
             updateStoredAuthData(authAttempts, lockUntil);
             showAuthError('tooManyAttempts', 30);
             return;
         }
 
-        // Update stored attempts
-        updateStoredAuthData(authAttempts);
-
-        // Handle other error cases
-        switch (error.code) {
-            case 'auth/invalid-email':
-            case 'auth/user-not-found':
-            case 'auth/user-disabled':
-                showAuthError('invalidEmail');
-                break;
-            case 'auth/wrong-password':
-                showAuthError('invalidPassword');
-                break;
-            default:
-                if (error.message && error.message.toLowerCase().includes('password')) {
-                    showAuthError('invalidPassword');
-                } else {
-                    showAuthError('invalidEmail');
-                }
-        }
+        // For all other errors, show invalid credentials
+        showAuthError('invalidCredentials');
     }
 });
 
