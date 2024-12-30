@@ -50,15 +50,13 @@
 
 /* Add overscroll behavior to prevent white space */
 html {
-    overscroll-behavior: none;
-    background: var(--background-color);
+    height: 100%;
+    width: 100%;
 }
 
 body {
-    overscroll-behavior: none;
-    background: var(--background-color);
     min-height: 100vh;
-    min-height: 100svh;
+    width: 100%;
 }
 
 /* Ensure content maintains background during scroll momentum */
