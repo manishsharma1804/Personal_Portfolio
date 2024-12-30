@@ -884,14 +884,22 @@ async function updateSidebarProfile() {
 }
 
 // Initialize auth state
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // User is signed in
-        loginForm.style.display = 'none';
-        adminDashboard.style.display = 'block';
-        initializeSections();
-        loadAllContent();
-        updateSidebarProfile();
+        // User is signed in - initialize everything but don't show dashboard yet
+        // (loader is showing at this point from successful login)
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) loginForm.style.display = 'none';
+        
+        await initializeSections();
+        await loadAllContent();
+        await updateSidebarProfile();
+        
+        // Now show the dashboard
+        const adminDashboard = document.getElementById('adminDashboard');
+        if (adminDashboard) {
+            adminDashboard.style.display = 'block';
+        }
         
         // Add logout event listeners
         const logoutBtn = document.querySelector('.btn-logout');
@@ -914,10 +922,19 @@ onAuthStateChanged(auth, (user) => {
         }
     } else {
         // User is signed out
-        loginForm.style.display = 'flex';
-        adminDashboard.style.display = 'none';
-        document.getElementById('adminEmail').value = '';
-        document.getElementById('adminPassword').value = '';
+        const loginForm = document.getElementById('loginForm');
+        const adminDashboard = document.getElementById('adminDashboard');
+        
+        if (loginForm) loginForm.style.display = 'flex';
+        if (adminDashboard) adminDashboard.style.display = 'none';
+        
+        // Clear form fields
+        const emailField = document.getElementById('adminEmail');
+        const passwordField = document.getElementById('adminPassword');
+        if (emailField) emailField.value = '';
+        if (passwordField) passwordField.value = '';
+        
+        // Hide all sections
         document.querySelectorAll('.content-section').forEach(section => {
             section.style.display = 'none';
         });
@@ -1045,6 +1062,30 @@ async function loadSectionContent(sectionId) {
 // Track authentication attempts
 let authAttempts = 0;
 
+// Function to get stored auth attempts data
+function getStoredAuthData() {
+    const storedData = localStorage.getItem('authData');
+    if (storedData) {
+        const data = JSON.parse(storedData);
+        // Check if the cooldown period has expired
+        if (data.lockUntil && new Date().getTime() > data.lockUntil) {
+            // Reset if cooldown is over
+            localStorage.removeItem('authData');
+            return { attempts: 0, lockUntil: null };
+        }
+        return data;
+    }
+    return { attempts: 0, lockUntil: null };
+}
+
+// Function to update stored auth attempts data
+function updateStoredAuthData(attempts, lockUntil = null) {
+    localStorage.setItem('authData', JSON.stringify({
+        attempts,
+        lockUntil
+    }));
+}
+
 // Fun error messages for different scenarios
 const errorMessages = {
     invalidEmail: [
@@ -1087,14 +1128,20 @@ function formatTime(seconds) {
 }
 
 // Function to show authentication error
-function showAuthError(type) {
+function showAuthError(type, waitTime = 30) {
     const loginForm = document.getElementById('adminLoginForm');
     const loginBox = document.querySelector('.login-box');
     
     // Get random message based on type and attempts
     let messages = errorMessages[type];
-    if (authAttempts >= 3) {
-        messages = errorMessages.tooManyAttempts;
+    if (type === 'tooManyAttempts') {
+        messages = [
+            "Whoa there! Too many login attempts! 🛑",
+            "Security check: Please wait before trying again! 🔒",
+            "System is taking a breather. Try again later! ⏳",
+            "Too many attempts detected. Time for a short break! 🚫",
+            "Account protection activated. Please wait! 🛡️"
+        ];
     }
     const message = messages[Math.floor(Math.random() * messages.length)];
 
@@ -1149,7 +1196,7 @@ function showAuthError(type) {
                         color: #ff6b6b !important;
                         animation: pulse 2s infinite !important;
                     " id="timer">
-                        Wait for 0:30 so I can think what to do with you...
+                        Please wait for ${formatTime(waitTime)} before trying again...
                     </div>
                 ` : ''}
             </div>
@@ -1221,75 +1268,37 @@ function showAuthError(type) {
         const tryAgainButton = loginBox.querySelector('.error-message-button');
         if (tryAgainButton) {
             if (authAttempts >= 3) {
-                // Timer code remains the same
-                let timeLeft = 30;
+                let timeLeft = waitTime;
                 const timerElement = loginBox.querySelector('#timer');
                 const timerInterval = setInterval(() => {
                     timeLeft--;
                     if (timerElement) {
-                        timerElement.textContent = `Wait for ${formatTime(timeLeft)} so I can think what to do with you...`;
+                        timerElement.textContent = `Please wait for ${formatTime(timeLeft)} before trying again...`;
                     }
                     if (timeLeft <= 0) {
                         clearInterval(timerInterval);
                         tryAgainButton.style.opacity = '1';
                         tryAgainButton.style.cursor = 'pointer';
+                        tryAgainButton.style.filter = 'none';
                         if (timerElement) {
-                            timerElement.textContent = "Okay, I'll give you another chance...";
+                            timerElement.textContent = "You can try again now!";
                             timerElement.style.color = '#4ade80 !important';
                         }
+                        // Reset attempts counter after timeout
+                        authAttempts = 0;
                         tryAgainButton.addEventListener('click', restoreLoginForm);
                     }
                 }, 1000);
-                    } else {
+            } else {
                 tryAgainButton.addEventListener('click', restoreLoginForm);
             }
-
-            // Add hover effect
-            tryAgainButton.addEventListener('mouseover', () => {
-                if (authAttempts < 3) {
-                    tryAgainButton.style.background = 'linear-gradient(135deg, #FF4B2B 0%, #FF416C 100%) !important';
-                    tryAgainButton.style.transform = 'translateY(-2px)';
-                    tryAgainButton.style.boxShadow = '0 15px 25px -10px rgba(255, 65, 108, 0.6)';
-                }
-            });
-            tryAgainButton.addEventListener('mouseout', () => {
-                if (authAttempts < 3) {
-                    tryAgainButton.style.background = 'linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%) !important';
-                    tryAgainButton.style.transform = 'translateY(0)';
-                    tryAgainButton.style.boxShadow = '0 10px 20px -10px rgba(255, 65, 108, 0.5)';
-                }
-            });
         }
     }, 300);
 
     // Function to restore login form with animation
     function restoreLoginForm() {
-        // Animate out error content
-        const container = loginBox.querySelector('div');
-        container.style.transform = 'scale(0.8) translateY(20px)';
-        container.style.opacity = '0';
-
-        setTimeout(() => {
-            // Restore original form
-            loginBox.innerHTML = originalContent;
-            const loginForm = loginBox.querySelector('#adminLoginForm');
-            
-            // Set initial state
-            loginForm.style.transform = 'scale(0.8) translateY(-20px)';
-            loginForm.style.opacity = '0';
-            
-            // Trigger animation
-            requestAnimationFrame(() => {
-                loginForm.style.transform = 'scale(1) translateY(0)';
-                loginForm.style.opacity = '1';
-            });
-
-            // Clear input fields
-            const emailInput = loginBox.querySelector('#adminEmail');
-            const passwordInput = loginBox.querySelector('#adminPassword');
-            if (emailInput) emailInput.value = '';
-            if (passwordInput) passwordInput.value = '';
-        }, 300);
+        // Refresh the page instead of manually restoring the form
+        window.location.reload();
     }
 
     // Increment attempts counter
@@ -1493,10 +1502,23 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (even
     const email = document.getElementById('adminEmail').value;
     const password = document.getElementById('adminPassword').value;
 
+    // Get stored auth data
+    const authData = getStoredAuthData();
+    authAttempts = authData.attempts;
+
+    // Check if user is in cooldown period
+    if (authData.lockUntil && new Date().getTime() < authData.lockUntil) {
+        const remainingTime = Math.ceil((authData.lockUntil - new Date().getTime()) / 1000);
+        showAuthError('tooManyAttempts', remainingTime);
+        return;
+    }
+
     try {
         // Basic email validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
+            authAttempts++;
+            updateStoredAuthData(authAttempts);
             showAuthError('invalidEmail');
             return;
         }
@@ -1505,24 +1527,60 @@ document.getElementById('adminLoginForm').addEventListener('submit', async (even
         await signInWithEmailAndPassword(auth, email, password);
         
         // Reset attempts on successful login
+        updateStoredAuthData(0);
         authAttempts = 0;
         
-        // Show loader and wait for content
+        // Show loader after successful login
         await showLoader();
-        
-        // After loader finishes, initialize the dashboard
-        initializeDashboard();
         
     } catch (error) {
         console.error('Login error:', error);
         
-        // Show appropriate error message
-        if (error.code === 'auth/invalid-email' || error.code === 'auth/user-not-found') {
-            showAuthError('invalidEmail');
-        } else if (error.code === 'auth/wrong-password') {
-            showAuthError('invalidPassword');
-        } else {
-            showAuthError('invalidPassword');
+        // Handle too many attempts first
+        if (error.code === 'auth/too-many-requests') {
+            // Extract time info from error message if available
+            const timeMatch = error.message.match(/Try again in (\d+) seconds/);
+            const waitTime = timeMatch ? parseInt(timeMatch[1]) : 30;
+            
+            // Set lockout period
+            const lockUntil = new Date().getTime() + (waitTime * 1000);
+            authAttempts = 3;
+            updateStoredAuthData(authAttempts, lockUntil);
+            showAuthError('tooManyAttempts', waitTime);
+            return;
+        }
+
+        // Increment attempts
+        authAttempts++;
+        
+        // Check if too many local attempts
+        if (authAttempts >= 3) {
+            // Set 30-second lockout period
+            const lockUntil = new Date().getTime() + (30 * 1000);
+            updateStoredAuthData(authAttempts, lockUntil);
+            showAuthError('tooManyAttempts', 30);
+            return;
+        }
+
+        // Update stored attempts
+        updateStoredAuthData(authAttempts);
+
+        // Handle other error cases
+        switch (error.code) {
+            case 'auth/invalid-email':
+            case 'auth/user-not-found':
+            case 'auth/user-disabled':
+                showAuthError('invalidEmail');
+                break;
+            case 'auth/wrong-password':
+                showAuthError('invalidPassword');
+                break;
+            default:
+                if (error.message && error.message.toLowerCase().includes('password')) {
+                    showAuthError('invalidPassword');
+                } else {
+                    showAuthError('invalidEmail');
+                }
         }
     }
 });
@@ -2875,123 +2933,27 @@ async function logout() {
         // First sign out from Firebase
         await signOut(auth);
         
-        // Get current theme for styling
-        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
-        
-        // Create and show the farewell animation
-        const flash = document.createElement('div');
-        flash.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100vw;
-            height: 100vh;
-            background: ${isDarkMode ? '#1a1a1a' : '#ffffff'};
-            z-index: 99999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s ease-in;
-        `;
+        // Hide the dashboard immediately
+        const adminDashboard = document.getElementById('adminDashboard');
+        if (adminDashboard) adminDashboard.style.display = 'none';
 
-        const message = document.createElement('div');
-        message.style.cssText = `
-            text-align: center;
-            transform: scale(0.8);
-            opacity: 0;
-            transition: all 0.5s ease-out;
-            max-width: 80%;
-            padding: 40px;
-            border-radius: 20px;
-            background: ${isDarkMode ? '#2d2d2d' : '#f8f9fa'};
-            box-shadow: ${isDarkMode ? '0 8px 32px rgba(0, 0, 0, 0.3)' : '0 8px 32px rgba(0, 0, 0, 0.1)'};
-        `;
-
-        // Try to get profile name
-        let profileName = 'Admin';
-        try {
-            const profileData = await loadProfile();
-            if (profileData?.name) {
-                profileName = profileData.name.split(' ')[0]; // Use first name only
-            }
-        } catch (error) {
-            console.warn('Error loading profile name:', error);
+        // Show login form
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            loginForm.style.display = 'flex';
+            
+            // Clear form fields
+            const emailField = document.getElementById('adminEmail');
+            const passwordField = document.getElementById('adminPassword');
+            if (emailField) emailField.value = '';
+            if (passwordField) passwordField.value = '';
         }
 
-        const farewells = [
-            "Goodbye",
-            "See you soon",
-            "Until next time",
-            "Take care"
-        ];
-        const randomFarewell = farewells[Math.floor(Math.random() * farewells.length)];
-
-        message.innerHTML = `
-            <div style="margin-bottom: 30px;">
-                <div style="font-size: 3rem; margin-bottom: 15px;">👋</div>
-                <div style="font-size: 2.2rem; color: ${isDarkMode ? '#fff' : '#1a1a1a'}; margin-bottom: 15px; font-weight: 600;">
-                    ${randomFarewell}, ${profileName}
-                </div>
-                <div style="color: ${isDarkMode ? '#e1e1e1' : '#333'}; margin-bottom: 15px; font-size: 1.1rem;">
-                    Logging you out securely...
-                </div>
-                <div class="progress-container" style="width: 200px; height: 4px; background: ${isDarkMode ? '#333' : '#eee'}; border-radius: 2px; margin: 20px auto; overflow: hidden;">
-                    <div class="progress" style="width: 0%; height: 100%; background: #4169E1; transition: width 2s ease-in-out;"></div>
-                </div>
-            </div>
-        `;
-
-        flash.appendChild(message);
-        document.body.appendChild(flash);
-
-        // Hide the login form and dashboard immediately
-        const loginForm = document.getElementById('loginForm');
-        const adminDashboard = document.getElementById('adminDashboard');
-        loginForm.style.display = 'none';
-        adminDashboard.style.display = 'none';
-
-        // Trigger animations
-        requestAnimationFrame(() => {
-            flash.style.opacity = '1';
-            message.style.opacity = '1';
-            message.style.transform = 'scale(1)';
-            // Start progress bar
-            const progress = message.querySelector('.progress');
-            progress.style.width = '100%';
-        });
-
-        // Wait for animation
-        await new Promise(resolve => setTimeout(resolve, 2500));
-
-        // Reset UI state
-        const sections = document.querySelectorAll('.content-section');
-        
-        // Clear form fields
-        document.getElementById('adminEmail').value = '';
-        document.getElementById('adminPassword').value = '';
-        
-        // Hide all sections
-        sections.forEach(section => {
-            section.style.display = 'none';
-        });
-        
         // Clear any stored data
         localStorage.removeItem('theme');
         
-        // Fade out animation
-        flash.style.opacity = '0';
-        message.style.transform = 'scale(1.2)';
-        message.style.opacity = '0';
-        
-        // Show login form after animation completes
-        setTimeout(() => {
-            flash.remove();
-            loginForm.style.display = 'flex';
-            window.location.reload();
-        }, 500);
+        // Reload the page to reset all states
+        window.location.reload();
 
     } catch (error) {
         console.error('Error signing out:', error);
