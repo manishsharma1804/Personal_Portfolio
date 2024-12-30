@@ -2,68 +2,68 @@
   "name": "Manish Sharma Portfolio",
   "short_name": "Portfolio",
   "description": "Professional Portfolio and Blog",
-  "start_url": "/",
+  "start_url": "https://manishsharma1804.github.io/Personal_Portfolio/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#4169E1",
   "orientation": "any",
   "icons": [
     {
-      "src": "icon-48x48.png",
+      "src": "AppImages/android/android-launchericon-48x48.png",
       "sizes": "48x48",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-72x72.png",
+      "src": "AppImages/android/android-launchericon-72x72.png",
       "sizes": "72x72",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-96x96.png",
+      "src": "AppImages/android/android-launchericon-96x96.png",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-128x128.png",
+      "src": "AppImages/android/android-launchericon-128x128.png",
       "sizes": "128x128",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-144x144.png",
+      "src": "AppImages/android/android-launchericon-144x144.png",
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-152x152.png",
+      "src": "AppImages/android/android-launchericon-152x152.png",
       "sizes": "152x152",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-192x192.png",
+      "src": "AppImages/android/android-launchericon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-256x256.png",
+      "src": "AppImages/android/android-launchericon-256x256.png",
       "sizes": "256x256",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-384x384.png",
+      "src": "AppImages/android/android-launchericon-384x384.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icon-512x512.png",
+      "src": "AppImages/android/android-launchericon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -71,14 +71,14 @@
   ],
   "screenshots": [
     {
-      "src": "web-app-manifest-192x192.png",
+      "src": "AppImages/android/android-launchericon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "form_factor": "narrow",
       "label": "Portfolio - Mobile View"
     },
     {
-      "src": "web-app-manifest-512x512.png",
+      "src": "AppImages/android/android-launchericon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "wide",
@@ -90,22 +90,22 @@
   "shortcuts": [
     {
       "name": "Home",
-      "url": "/",
+      "url": "https://manishsharma1804.github.io/Personal_Portfolio/",
       "description": "Go to Homepage"
     },
     {
       "name": "Blog",
-      "url": "/#blog",
+      "url": "https://manishsharma1804.github.io/Personal_Portfolio/#blog",
       "description": "View Blog Posts"
     },
     {
       "name": "Projects",
-      "url": "/#projects",
+      "url": "https://manishsharma1804.github.io/Personal_Portfolio/#projects",
       "description": "View Projects"
     },
     {
       "name": "Contact",
-      "url": "/#contact",
+      "url": "https://manishsharma1804.github.io/Personal_Portfolio/#contact",
       "description": "Contact Me"
     }
   ]
