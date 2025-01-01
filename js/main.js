@@ -10,6 +10,66 @@ import {
 import { getFirestore, doc, getDoc, collection, addDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 const db = getFirestore();
 
+// PWA Update Check
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+                // Check for updates every hour
+                setInterval(() => {
+                    registration.update();
+                }, 1000 * 60 * 60); // 1 hour
+
+                registration.addEventListener('updatefound', () => {
+                    const newWorker = registration.installing;
+                    
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            showNotification('A new version is available! Close and reopen the app to update.', 'info');
+                        }
+                    });
+                });
+            })
+            .catch(error => console.warn('Service worker registration failed:', error));
+    });
+
+    // Listen for controller change
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        window.location.reload();
+        refreshing = true;
+    });
+}
+
+let refreshing = false;
+
+// Function to check manifest changes
+async function checkManifestChanges() {
+    try {
+        const response = await fetch('/manifest.json');
+        const manifest = await response.json();
+        
+        // Get stored manifest hash
+        const storedHash = localStorage.getItem('manifestHash');
+        const currentHash = JSON.stringify(manifest);
+        
+        if (storedHash && storedHash !== currentHash) {
+            showNotification('App has been updated! Please refresh for new features.', 'info');
+        }
+        
+        // Store new hash
+        localStorage.setItem('manifestHash', currentHash);
+    } catch (error) {
+        console.warn('Manifest check failed:', error);
+    }
+}
+
+// Check manifest on load and every hour
+window.addEventListener('load', () => {
+    checkManifestChanges();
+    setInterval(checkManifestChanges, 1000 * 60 * 60); // Every hour
+});
+
 // Function to hide empty sections
 const hideEmptySection = (sectionId) => {
     const section = document.querySelector(`section#${sectionId}`);

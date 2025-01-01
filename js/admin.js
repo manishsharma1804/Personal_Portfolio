@@ -6105,6 +6105,59 @@ async function replyAllSelected() {
 // Add to window object
 window.replyAllSelected = replyAllSelected;
 
+// Mobile device detection
+function isMobileDevice() {
+    return (window.innerWidth <= 768) || 
+           (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+}
+
+// Function to show mobile warning
+function showMobileWarning() {
+    const adminName = localStorage.getItem('adminName') || 'Admin';
+    const warningMessage = `
+        <div class="mobile-warning">
+            <i class="fas fa-mobile-alt"></i>
+            <h2>Hey ${adminName}!</h2>
+            <p>It looks like you're using a mobile device to access the admin panel.</p>
+            <p>For the best experience and easier content management, please use a tablet or desktop computer.</p>
+            <div class="warning-actions">
+                <button class="btn-primary continue-anyway">Continue Anyway</button>
+                <a href="/" class="btn-secondary">Go to Main Site</a>
+            </div>
+        </div>
+    `;
+
+    const warningOverlay = document.createElement('div');
+    warningOverlay.className = 'mobile-warning-overlay';
+    warningOverlay.innerHTML = warningMessage;
+    document.body.appendChild(warningOverlay);
+
+    // Add event listener for "Continue Anyway"
+    warningOverlay.querySelector('.continue-anyway').addEventListener('click', () => {
+        warningOverlay.classList.add('fade-out');
+        setTimeout(() => warningOverlay.remove(), 300);
+        localStorage.setItem('ignoreMobileWarning', 'true');
+    });
+}
+
+// Check device on load
+document.addEventListener('DOMContentLoaded', () => {
+    if (isMobileDevice() && !localStorage.getItem('ignoreMobileWarning')) {
+        showMobileWarning();
+    }
+});
+
+// Check on resize
+let resizeTimer;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        if (isMobileDevice() && !localStorage.getItem('ignoreMobileWarning')) {
+            showMobileWarning();
+        }
+    }, 250);
+});
+
 
 
 
