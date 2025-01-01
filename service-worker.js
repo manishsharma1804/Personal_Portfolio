@@ -1,4 +1,4 @@
-const CACHE_NAME = 'portfolio-v1';
+const CACHE_NAME = 'portfolio-v1.0.0';
 const ASSETS_TO_CACHE = [
     '/',
     '/index.html',
@@ -18,6 +18,13 @@ self.addEventListener('install', event => {
     );
 });
 
+// Message event - handle messages from clients
+self.addEventListener('message', event => {
+    if (event.data === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
+
 // Activate event - clean old caches
 self.addEventListener('activate', event => {
     event.waitUntil(
@@ -29,7 +36,13 @@ self.addEventListener('activate', event => {
                     }
                 })
             );
-        }).then(() => self.clients.claim())
+        }).then(() => {
+            self.clients.claim();
+            // Notify all clients about the update
+            self.clients.matchAll().then(clients => {
+                clients.forEach(client => client.postMessage({ type: 'UPDATE_READY' }));
+            });
+        })
     );
 });
 

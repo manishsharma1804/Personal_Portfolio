@@ -39,6 +39,44 @@ if ('serviceWorker' in navigator) {
         window.location.reload();
         refreshing = true;
     });
+
+    // Listen for messages from service worker
+    navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data.type === 'UPDATE_READY') {
+            // Create update notification
+            const updateDiv = document.createElement('div');
+            updateDiv.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #2196F3;
+                color: white;
+                padding: 16px 24px;
+                border-radius: 4px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                z-index: 10000;
+            `;
+            
+            updateDiv.innerHTML = `
+                <span>A new version is available!</span>
+                <button onclick="window.location.reload()" style="
+                    background: white;
+                    color: #2196F3;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: bold;
+                ">Update Now</button>
+            `;
+
+            document.body.appendChild(updateDiv);
+        }
+    });
 }
 
 let refreshing = false;
@@ -229,10 +267,8 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-// Track last shown messages
-let lastSuccessMessage = '';
-let lastErrorMessage = '';
-let lastSendingMessage = '';
+// Track admin access attempts
+let adminAttempts = 0;
 
 // Function to validate email format
 function isValidEmail(email) {
@@ -257,94 +293,153 @@ function getFirstName(fullName) {
     return nameParts[0] || fullName;
 }
 
-// Function to get random success message
+// Function to get random portfolio success message
 function getRandomSuccessMessage(name) {
+    const firstName = getFirstName(name);
     const messages = [
-        `Hey ${name}, thanks for contacting me! I'll get in touch with you shortly...`,
-        `Thanks for reaching out, ${name}! I'll respond to your message soon...`,
-        `Got your message, ${name}! I'll get back to you as soon as possible...`,
-        `Thanks ${name}! I appreciate you getting in touch and will respond shortly...`,
-        `Message received, ${name}! Looking forward to connecting with you soon...`,
-        `Perfect timing, ${name}! I'll review your message and get back to you...`,
-        `Thanks for dropping a line, ${name}! I'll respond as soon as I can...`,
-        `Hey ${name}! Your message is in good hands. I'll get back to you soon...`,
-        `Great to hear from you, ${name}! Expect my response shortly...`,
-        `Message successfully landed, ${name}! I'll be in touch soon...`,
-        `Thanks for writing, ${name}! I'll make sure to respond promptly...`,
-        `Hi ${name}! Your message is important to me. I'll respond soon...`,
-        `Message secured, ${name}! Looking forward to our conversation...`,
-        `Awesome, ${name}! I'll review your message and respond shortly...`,
-        `Thanks for reaching out ${name}! I'll get back to you with lightning speed ⚡`,
-        `Message received and noted, ${name}! Expect my response soon...`,
-        `Hey ${name}! Your message just made my day. I'll respond shortly...`,
-        `Thanks for connecting, ${name}! I'll be in touch before you know it...`
+        `Thanks ${firstName}! 🌟 Your message has landed in my portfolio inbox. I'll craft a thoughtful response soon!`,
+        `High five, ${firstName}! 🖐️ Thanks for checking out my portfolio. I'll get back to you with creative ideas!`,
+        `Message received, ${firstName}! 💼 Always excited to connect with someone interested in my work.`,
+        `Hey ${firstName}! 🚀 Thanks for reaching out. Let's create something amazing together!`,
+        `Awesome message, ${firstName}! 💫 Can't wait to discuss potential collaborations with you.`,
+        `Thank you ${firstName}! 🎨 Your interest in my portfolio means a lot. I'll respond with some creative thoughts soon.`,
+        `Message secured, ${firstName}! 🔥 Looking forward to sharing my project insights with you.`,
+        `Got your note, ${firstName}! 💡 Excited to discuss how we can bring your ideas to life.`,
+        `Thanks for connecting, ${firstName}! 🌈 Your message will help shape our next creative venture.`,
+        `Message landed safely, ${firstName}! 🎯 Ready to turn your vision into reality.`,
+        `Hey ${firstName}! 🌟 Thanks for exploring my digital playground. Let's create something unique!`,
+        `Message received, ${firstName}! 🎪 Can't wait to share my portfolio journey with you.`,
+        `Thank you ${firstName}! 🎭 Your interest in my creative work means the world to me.`,
+        `Fantastic, ${firstName}! 🎨 Looking forward to discussing design possibilities with you.`,
+        `Message noted, ${firstName}! 💻 Ready to bring some digital magic to your project.`,
+        `Thanks ${firstName}! 🎯 Your message is the first step to something extraordinary.`,
+        `Got it, ${firstName}! 🚀 Excited to show you how we can elevate your ideas.`,
+        `Message received, ${firstName}! 💫 Let's transform your vision into digital reality.`,
+        `Thank you ${firstName}! 🌈 Your interest in my portfolio sparks joy and creativity.`,
+        `Hey ${firstName}! 🎪 Can't wait to add your project to my portfolio showcase!`
     ];
-    
-    // Filter out the last shown message
-    const availableMessages = messages.filter(msg => msg !== lastSuccessMessage);
-    // Get random message from remaining ones
-    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
-    // Update last shown message
-    lastSuccessMessage = message;
-    return message;
+    return messages[Math.floor(Math.random() * messages.length)];
 }
 
-// Function to get random error message for rate limiting
-function getRandomErrorMessage(name, timeLeft) {
-    const messages = [
-        `Whoa ${name}! Looks like someone's been busy - either you or someone using your IP. Take a ${timeLeft} breather...`,
-        `${name}, you're quite the enthusiast! But let's wait ${timeLeft} - my inbox needs to catch its breath...`,
-        `Plot twist, ${name}! Someone with your IP already sent messages. Next episode in ${timeLeft}...`,
-        `${name}, you're breaking records here! But let's pause for ${timeLeft} - even superheroes need rest...`,
-        `Impressive dedication, ${name}! But we've hit the limit. Grab a coffee and come back in ${timeLeft}...`,
-        `${name}, either you're really eager or your IP is popular! Either way, let's reconnect in ${timeLeft}...`,
-        `Hold that thought, ${name}! Your IP address has been quite chatty. Next chat window opens in ${timeLeft}...`,
-        `${name}, you've unlocked the 'Super Active User' badge! Cooldown period: ${timeLeft}...`,
-        `Breaking news, ${name}! Your IP hit the message limit. Next available slot: ${timeLeft}...`,
-        `${name}, you're too fast for your own IP! Take a ${timeLeft} break - maybe do some yoga?`,
-        `Detected: Enthusiastic messaging! ${name}, let's continue this lovely conversation in ${timeLeft}...`,
-        `${name}, your IP is quite the social butterfly! Time for a quick ${timeLeft} breather...`,
-        `Message limit reached! ${name}, I admire your enthusiasm, but let's wait ${timeLeft}...`,
-        `${name}, you or your IP twin has been quite active! Next window of opportunity: ${timeLeft}...`,
-        `Slow down, speed racer ${name}! Your IP needs a ${timeLeft} pit stop...`
-    ];
-    
-    // Filter out the last shown message
-    const availableMessages = messages.filter(msg => msg !== lastErrorMessage);
-    // Get random message from remaining ones
-    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
-    // Update last shown message
-    lastErrorMessage = message;
-    return message;
+// Message limits configuration
+const MESSAGE_LIMITS = {
+    PER_MINUTE: 2,  // 2 messages per minute
+    PER_HOUR: 5,    // 5 messages per hour
+    PER_DAY: 10     // 10 messages per day
+};
+
+// Store message timestamps in localStorage
+function storeMessageTimestamp() {
+    const timestamps = JSON.parse(localStorage.getItem('messageTimestamps') || '[]');
+    timestamps.push(Date.now());
+    localStorage.setItem('messageTimestamps', JSON.stringify(timestamps));
 }
 
-// Function to get random generic error message
-function getRandomGenericErrorMessage() {
-    const messages = [
-        "Looks like the internet is playing hide and seek! Check your connection and try again...",
-        "The internet gremlins are at it again! Please check your connection...",
-        "Your message got lost in the digital void. Quick connection check?",
-        "Error 404: Internet not found! Time to check that connection...",
-        "The digital carrier pigeons are confused. Maybe check your internet?",
-        "Your bits and bytes took a wrong turn. Let's check that connection...",
-        "The internet hamsters need a reboot! Please verify your connection...",
-        "Your message tried to swim the internet, but got tired. Connection check?",
-        "The cyber highway is experiencing traffic. Check your internet route...",
-        "Your packets got lost in cyberspace! Time for a connection check...",
-        "The internet tubes are clogged! Let's check that connection...",
-        "Your message hit a digital pothole. Quick internet check?",
-        "The web weaver is napping. Maybe check your connection?",
-        "Your data took a coffee break. Time to check the internet...",
-        "Message delivery service is doing jumping jacks. Connection check?"
+// Check if user can send message
+function canSendMessage() {
+    const timestamps = JSON.parse(localStorage.getItem('messageTimestamps') || '[]');
+    const now = Date.now();
+    
+    // Clean old timestamps
+    const dayOld = now - (24 * 60 * 60 * 1000);
+    const cleanedTimestamps = timestamps.filter(time => time > dayOld);
+    localStorage.setItem('messageTimestamps', JSON.stringify(cleanedTimestamps));
+    
+    // Check limits
+    const lastMinute = cleanedTimestamps.filter(time => time > now - 60000).length;
+    const lastHour = cleanedTimestamps.filter(time => time > now - 3600000).length;
+    const lastDay = cleanedTimestamps.length;
+    
+    if (lastMinute >= MESSAGE_LIMITS.PER_MINUTE) {
+        return { allowed: false, reason: 'minute', timeLeft: 60 - Math.floor((now - cleanedTimestamps[cleanedTimestamps.length - lastMinute])/1000) };
+    }
+    if (lastHour >= MESSAGE_LIMITS.PER_HOUR) {
+        return { allowed: false, reason: 'hour', timeLeft: 3600 - Math.floor((now - cleanedTimestamps[cleanedTimestamps.length - lastHour])/1000) };
+    }
+    if (lastDay >= MESSAGE_LIMITS.PER_DAY) {
+        return { allowed: false, reason: 'day', timeLeft: 86400 - Math.floor((now - cleanedTimestamps[0])/1000) };
+    }
+    
+    return { allowed: true };
+}
+
+// Check for spam content
+function isSpamContent(message, name, email) {
+    // Convert to lowercase for checking
+    const lowerMessage = message.toLowerCase();
+    const lowerName = name.toLowerCase();
+    
+    // Check for common spam patterns
+    const spamPatterns = [
+        /buy now/i,
+        /\[url=/i,
+        /\[link=/i,
+        /http:\/\//i,
+        /https:\/\//i,
+        /viagra/i,
+        /casino/i,
+        /lottery/i,
+        /win.*prize/i,
+        /free.*money/i,
+        /\$\$\$/,
+        /[^\s]{30,}/  // No legitimate words are this long
     ];
     
-    // Filter out the last shown message
-    const availableMessages = messages.filter(msg => msg !== lastErrorMessage);
-    // Get random message from remaining ones
-    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
-    // Update last shown message
-    lastErrorMessage = message;
-    return message;
+    // Check for excessive special characters
+    const specialCharRatio = (message.match(/[^a-zA-Z0-9\s]/g) || []).length / message.length;
+    if (specialCharRatio > 0.3) return true;
+    
+    // Check for repetitive characters
+    if (/(.)\1{4,}/.test(message)) return true;  // Same character repeated 5+ times
+    
+    // Check against spam patterns
+    return spamPatterns.some(pattern => pattern.test(lowerMessage) || pattern.test(lowerName));
+}
+
+// Function to get random error message
+function getRandomErrorMessage(name, type, timeLeft = null) {
+    const firstName = getFirstName(name);
+    const messages = {
+        spam: [
+            `🚫 Oops ${firstName}! Your message contains patterns that look like spam. Please revise and try again.`,
+            `⚠️ Hold on ${firstName}! We detected some suspicious content. Mind rephrasing your message?`,
+            `🔍 Hey ${firstName}, our spam filter caught something unusual. Could you modify your message?`,
+            `🛡️ ${firstName}, we're keeping things clean! Please remove any promotional or suspicious content.`,
+            `🤖 Beep boop! ${firstName}, that looks like spam to our systems. Want to try again?`
+        ],
+        length: [
+            `📝 ${firstName}, your message is too ${timeLeft}. Keep it between 10-1000 characters.`,
+            `✍️ Hey ${firstName}! Mind adjusting your message length? It's too ${timeLeft}.`,
+            `📊 ${firstName}, we need a ${timeLeft} message. Adjust and try again?`,
+            `📏 Oops! ${firstName}, your message is ${timeLeft}. Let's find that sweet spot!`,
+            `✂️ ${firstName}, could you make your message ${timeLeft}? It helps us serve you better!`
+        ],
+        rate: [
+            `⏳ Easy there, ${firstName}! You'll need to wait ${timeLeft} before sending another message.`,
+            `⌛ ${firstName}, you're quite active! Take a ${timeLeft} break before your next message.`,
+            `⏰ Hold your horses, ${firstName}! Just ${timeLeft} until you can send again.`,
+            `🕒 ${firstName}, we love your enthusiasm! But let's wait ${timeLeft} before the next one.`,
+            `⏱️ Quick break time, ${firstName}! You can send again in ${timeLeft}.`
+        ],
+        generic: [
+            `🔧 Oops! Something went wrong, ${firstName}. Mind trying again?`,
+            `⚡ Technical hiccup, ${firstName}! Give it another shot?`,
+            `🌐 Connection gremlins, ${firstName}! Shall we try once more?`,
+            `💫 ${firstName}, that didn't quite work. One more try?`,
+            `🎯 Almost there, ${firstName}! Let's try that again.`
+        ]
+    };
+
+    const messageArray = messages[type] || messages.generic;
+    return messageArray[Math.floor(Math.random() * messageArray.length)];
+}
+
+// Function to format time remaining
+function formatTimeRemaining(seconds) {
+    if (seconds < 60) return `${seconds} seconds`;
+    if (seconds < 3600) return `${Math.ceil(seconds/60)} minutes`;
+    if (seconds < 86400) return `${Math.ceil(seconds/3600)} hours`;
+    return `${Math.ceil(seconds/86400)} days`;
 }
 
 // Function to handle contact form submission
@@ -353,7 +448,6 @@ async function handleContactSubmit(event) {
     let form = event.target;
     let submitButton = form.querySelector('button[type="submit"]');
     let originalButtonText = submitButton?.innerHTML || '';
-    let useFirebaseTracking = true;  // Flag to track if Firebase is accessible
     
     try {
         const nameInput = form.querySelector('#contactName');
@@ -363,100 +457,63 @@ async function handleContactSubmit(event) {
         // Check if all form elements exist
         if (!nameInput || !emailInput || !messageInput || !submitButton) {
             console.error('Form elements not found');
-            showNotification(getRandomGenericErrorMessage(), 'error');
+            showNotification(getRandomErrorMessage('Friend', 'generic'), 'error');
             return;
         }
 
         // Get form values
         const name = nameInput.value.trim();
-        const firstName = getFirstName(name);  // Get first name early for messages
         const email = emailInput.value.trim();
         const messageText = messageInput.value.trim();
         
-        // Form validation
+        // Check for admin access
+        if (messageText.toLowerCase() === 'hello! its admin' && !name && !email) {
+            adminAttempts++;
+            if (adminAttempts === 5) {
+                adminAttempts = 0;
+                window.location.href = 'admin.html';
+            return;
+        }
+            return;
+        }
+
+        // Reset admin attempts if different message
+        adminAttempts = 0;
+        
+        // Regular form validation
         if (!name || !email || !messageText) {
-            showNotification('Please fill in all fields', 'error');
+            const userName = name || 'Friend';
+            showNotification(`Hey ${userName}! Please fill in all fields to continue our conversation.`, 'error');
             return;
         }
         
         if (!isValidEmail(email)) {
-            showNotification('Please enter a valid email address', 'error');
+            showNotification(`Hey ${getFirstName(name)}! That email address doesn't look quite right. Mind double-checking?`, 'error');
             return;
         }
 
-        // Get user's IP address
-        const ipResponse = await fetch('https://api.ipify.org?format=json');
-        const ipData = await ipResponse.json();
-        const userIP = ipData.ip;
-        
-        // Get message history from device
-        const deviceMessages = JSON.parse(localStorage.getItem('messageHistory') || '[]');
-        
-        // Check 5-minute limit (2 messages)
-        const recentMessages = deviceMessages.filter(timestamp => 
-            Date.now() - timestamp < 5 * 60 * 1000 // Last 5 minutes
-        );
-        
-        // Check 24-hour limit (5 messages)
-        const dailyMessages = deviceMessages.filter(timestamp => 
-            Date.now() - timestamp < 24 * 60 * 60 * 1000 // Last 24 hours
-        );
-
-        let ipHistory = [];
-        let recentIPMessages = [];
-        let dailyIPMessages = [];
-        
-        try {
-            // Try to get IP-based limits from Firebase
-            const ipRef = doc(db, 'messageTracking', userIP);
-            const ipDoc = await getDoc(ipRef);
-            ipHistory = ipDoc.exists() ? ipDoc.data().messages || [] : [];
-            
-            recentIPMessages = ipHistory.filter(timestamp => 
-                Date.now() - timestamp < 5 * 60 * 1000 // Last 5 minutes
-            );
-            
-            dailyIPMessages = ipHistory.filter(timestamp => 
-                Date.now() - timestamp < 24 * 60 * 60 * 1000 // Last 24 hours
-            );
-        } catch (firebaseError) {
-            console.warn('Firebase tracking unavailable:', firebaseError);
-            useFirebaseTracking = false;
-        }
-        
-        // Check 5-minute limit
-        if (recentMessages.length >= 2 || (useFirebaseTracking && recentIPMessages.length >= 2)) {
-            const deviceTimeUntilReset = recentMessages.length > 0 ? 
-                5 * 60 * 1000 - (Date.now() - recentMessages[0]) : 0;
-            const ipTimeUntilReset = useFirebaseTracking && recentIPMessages.length > 0 ? 
-                5 * 60 * 1000 - (Date.now() - recentIPMessages[0]) : 0;
-            const timeUntilReset = Math.max(deviceTimeUntilReset, ipTimeUntilReset);
-            const minutesLeft = Math.ceil(timeUntilReset / (60 * 1000));
-            const timeDisplay = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
-            showNotification(getRandomErrorMessage(firstName, timeDisplay), 'error');
+        // Check message length
+        if (messageText.length < 10) {
+            showNotification(getRandomErrorMessage(name, 'length', 'short'), 'error');
             return;
         }
         
-        // Check 24-hour limit
-        if (dailyMessages.length >= 5 || (useFirebaseTracking && dailyIPMessages.length >= 5)) {
-            const deviceTimeUntilReset = dailyMessages.length > 0 ? 
-                24 * 60 * 60 * 1000 - (Date.now() - dailyMessages[0]) : 0;
-            const ipTimeUntilReset = useFirebaseTracking && dailyIPMessages.length > 0 ? 
-                24 * 60 * 60 * 1000 - (Date.now() - dailyIPMessages[0]) : 0;
-            const timeUntilReset = Math.max(deviceTimeUntilReset, ipTimeUntilReset);
-            const hoursLeft = Math.ceil(timeUntilReset / (60 * 60 * 1000));
-            const timeDisplay = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
-            showNotification(getRandomErrorMessage(firstName, timeDisplay), 'error');
+        if (messageText.length > 1000) {
+            showNotification(getRandomErrorMessage(name, 'length', 'long'), 'error');
             return;
         }
 
-        // Admin check
-        if (messageText.toLowerCase() === 'hello! its admin') {
-            document.activeElement.blur();
-            if (checkAdminAccess(messageText)) {
-                activateSecretCode();
+        // Check for spam content
+        if (isSpamContent(messageText, name, email)) {
+            showNotification(getRandomErrorMessage(name, 'spam'), 'error');
                 return;
             }
+
+        // Check rate limits
+        const rateCheck = canSendMessage();
+        if (!rateCheck.allowed) {
+            const timeLeft = formatTimeRemaining(rateCheck.timeLeft);
+            showNotification(getRandomErrorMessage(name, 'rate', timeLeft), 'error');
             return;
         }
 
@@ -469,39 +526,25 @@ async function handleContactSubmit(event) {
             name: name,
             email: email,
             message: messageText,
-            timestamp: Date.now(),
-            ip: userIP
+            timestamp: Date.now()
         };
 
         // Save the message
         await saveContactMessage(messageData);
         
-        // Update device tracking
-        deviceMessages.push(Date.now());
-        localStorage.setItem('messageHistory', JSON.stringify(deviceMessages));
-        
-        // Update Firebase tracking if available
-        if (useFirebaseTracking) {
-            try {
-                ipHistory.push(Date.now());
-                await setDoc(doc(db, 'messageTracking', userIP), { messages: ipHistory }, { merge: true });
-            } catch (firebaseError) {
-                console.warn('Failed to update Firebase tracking:', firebaseError);
-            }
-        }
+        // Store timestamp for rate limiting
+        storeMessageTimestamp();
         
         // Clear form
         form.reset();
         
         // Show personalized success message
-        showNotification(getRandomSuccessMessage(firstName), 'success');
+        showNotification(getRandomSuccessMessage(name), 'success');
     } catch (error) {
         console.error('Error sending message:', error);
-        // Use personalized message if we have the name, otherwise use generic
-        const errorMessage = name 
-            ? `Oops! Sorry ${firstName}, something went wrong. Please try again...`
-            : getRandomGenericErrorMessage();
-        showNotification(errorMessage, 'error');
+        // Use the name if available, otherwise use 'Friend'
+        const userName = (nameInput && nameInput.value.trim()) || 'Friend';
+        showNotification(getRandomErrorMessage(userName, 'generic'), 'error');
     } finally {
         if (submitButton) {
             submitButton.innerHTML = originalButtonText;
@@ -540,12 +583,11 @@ function showNotification(message, type = 'success') {
     // Trigger animation
     setTimeout(() => notification.classList.add('show'), 100);
     
-    // Remove notification after delay - 6s for success, 7s for error
-    const displayDuration = type === 'success' ? 6000 : 7000;
+    // Remove notification after delay
     setTimeout(() => {
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 300);
-    }, displayDuration);
+    }, 3000);
 }
 
 // Dynamic content loading from Firebase
@@ -1314,200 +1356,6 @@ document.querySelector('.logo-image').addEventListener('click', async () => {
     }
 }); 
 
-// Function to activate secret code
-async function activateSecretCode() {
-    try {
-        await showAdminRedirectLoader();
-        window.location.href = 'admin.html';
-    } catch (error) {
-        console.error('Error during login:', error);
-    }
-}
-
-// Function to show loader before admin redirection
-async function showAdminRedirectLoader() {
-    // Create container with solid background
-    const adminLoaderContainer = document.createElement('div');
-    adminLoaderContainer.className = 'admin-loader-container';
-    adminLoaderContainer.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        background-color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#1a1a1a' : '#ffffff'} !important;
-        z-index: 9999999999;
-        opacity: 1;
-        transition: opacity 0.5s ease-out;
-    `;
-
-    // Create loader box with glass effect
-    const loaderBox = document.createElement('div');
-    loaderBox.style.cssText = `
-        background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'rgba(37, 37, 37, 0.9)' : 'rgba(255, 255, 255, 0.9)'};
-        border-radius: 20px;
-        padding: 2rem;
-        text-align: center;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-        backdrop-filter: blur(4px);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        transform: scale(0.9);
-        opacity: 0;
-        transition: all 0.3s ease-out;
-    `;
-
-    // Create and style the loader
-    const adminLoader = document.createElement('div');
-    adminLoader.className = 'admin-loader';
-    adminLoader.style.cssText = `
-        width: 80px;
-        height: 80px;
-        position: relative;
-        margin: 0 auto 1.5rem;
-        animation: adminLoaderPulse 2s ease-in-out infinite;
-    `;
-
-    const loaderImg = document.createElement('img');
-    loaderImg.src = 'logo/logo.png';
-    loaderImg.alt = 'Loading...';
-    loaderImg.style.cssText = `
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-        filter: ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'brightness(100)' : 'brightness(0)'};
-        transition: filter 0.3s ease;
-    `;
-
-    // Create message container
-    const messageContainer = document.createElement('div');
-    messageContainer.innerHTML = `
-        <div style="
-            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#ffffff' : '#1a1a1a'};
-            font-size: 2rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-        ">Welcome to Admin Panel!</div>
-        <div id="loaderMessage" style="
-            color: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#cccccc' : '#666666'};
-            font-size: 1.1rem;
-        ">Preparing your workspace...</div>
-        <div class="progress-bar" style="
-            width: 200px;
-            height: 4px;
-            background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#333' : '#eee'};
-            margin: 1.5rem auto 0;
-            border-radius: 2px;
-            overflow: hidden;
-        ">
-            <div class="progress" style="
-                width: 100%;
-                height: 100%;
-                background: ${document.documentElement.getAttribute('data-theme') === 'dark' ? '#8bb9dd' : '#2a6496'};
-                transform: translateX(-100%);
-                animation: progress 5s linear forwards;
-            "></div>
-        </div>
-    `;
-
-    // Add animation keyframes
-    const styleSheet = document.createElement('style');
-    styleSheet.textContent = `
-        @keyframes adminLoaderPulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes progress {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(0); }
-        }
-    `;
-    document.head.appendChild(styleSheet);
-
-    // Assemble the loader
-    adminLoader.appendChild(loaderImg);
-    loaderBox.appendChild(adminLoader);
-    loaderBox.appendChild(messageContainer);
-    adminLoaderContainer.appendChild(loaderBox);
-    document.body.appendChild(adminLoaderContainer);
-
-    // Messages for loading state
-    const loadingMessages = [
-        "Preparing your workspace...",
-        "Setting up admin access...",
-        "Almost there...",
-        "Redirecting to admin panel..."
-    ];
-
-    // Show loader with animation
-    requestAnimationFrame(() => {
-        loaderBox.style.transform = 'scale(1)';
-        loaderBox.style.opacity = '1';
-    });
-
-    // Cycle through loading messages
-    let messageIndex = 0;
-    const messageInterval = setInterval(() => {
-        const messageElement = document.getElementById('loaderMessage');
-        if (messageElement) {
-            messageElement.style.opacity = '0';
-            setTimeout(() => {
-                messageElement.textContent = loadingMessages[messageIndex];
-                messageElement.style.opacity = '1';
-                messageIndex = (messageIndex + 1) % loadingMessages.length;
-            }, 200);
-        }
-    }, 2000);
-
-    // Return a promise that resolves when loading is done
-    return new Promise((resolve) => {
-        const minLoadTime = 5000; // Minimum 5 seconds
-        const startTime = Date.now();
-
-        // Function to check if content is loaded
-        const checkContentLoaded = () => {
-            const elapsedTime = Date.now() - startTime;
-            const remainingTime = Math.max(0, minLoadTime - elapsedTime);
-
-            // If minimum time has passed
-            if (elapsedTime >= minLoadTime) {
-                clearInterval(messageInterval);
-                
-                // Fade out loader
-                loaderBox.style.transform = 'scale(0.9)';
-                loaderBox.style.opacity = '0';
-                setTimeout(() => {
-                    adminLoaderContainer.style.opacity = '0';
-                    setTimeout(() => {
-                        adminLoaderContainer.remove();
-                        styleSheet.remove();
-                        resolve();
-                    }, 300);
-                }, 200);
-            } else {
-                // Check again in 100ms
-                setTimeout(checkContentLoaded, 100);
-            }
-        };
-
-        // Start checking
-        checkContentLoaded();
-    });
-}
-
-// Update the secret key handler to use the loader
-document.addEventListener('keydown', async function(event) {
-    if (event.key === 'a' && event.ctrlKey && event.shiftKey) {
-        event.preventDefault();
-        await showAdminRedirectLoader();
-        window.location.href = 'admin.html';
-    }
-}); 
-
 // Function to get random sending message
 function getRandomSendingMessage() {
     const messages = [
@@ -1522,12 +1370,5 @@ function getRandomSendingMessage() {
         '<i class="fas fa-dove fa-spin"></i> Message in flight...',
         '<i class="fas fa-paper-plane fa-spin"></i> On its way...'
     ];
-    
-    // Filter out the last shown message
-    const availableMessages = messages.filter(msg => msg !== lastSendingMessage);
-    // Get random message from remaining ones
-    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
-    // Update last shown message
-    lastSendingMessage = message;
-    return message;
+    return messages[Math.floor(Math.random() * messages.length)];
 } 

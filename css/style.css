@@ -51,12 +51,31 @@
 /* Add overscroll behavior to prevent white space */
 html {
     height: 100%;
-    width: 100%;
+    background-color: var(--background-color);
+    overscroll-behavior: none;
 }
 
 body {
-    min-height: 100vh;
-    width: 100%;
+    min-height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* For iOS devices */
+@supports (-webkit-touch-callout: none) {
+    body {
+        height: -webkit-fill-available;
+    }
+}
+
+/* Ensure dark mode colors persist */
+[data-theme='dark'] {
+    color-scheme: dark;
 }
 
 /* Ensure content maintains background during scroll momentum */
@@ -125,13 +144,20 @@ body {
 }
 
 [data-theme="dark"] .btn-outline {
+    padding: 15px 35px;
+    border: 2px solid transparent;
+    border-radius: 30px;
     color: var(--text-color);
-    border-color: var(--text-color);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    background: linear-gradient(var(--background-color), var(--background-color)) padding-box,
+                linear-gradient(135deg, #FF416C, #FF4B2B) border-box;
 }
 
 [data-theme="dark"] .btn-outline:hover {
-    background: var(--text-color);
-    color: var(--background-color);
+    background: linear-gradient(135deg, #FF416C, #FF4B2B);
+    color: #fff;
 }
 
 [data-theme="dark"] .widget-subheading {
@@ -220,7 +246,7 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
 }
 
 .theme-toggle:hover {
-    background: rgba(65, 105, 225, 0.1);
+    background: rgba(255, 65, 108, 0.1);
 }
 
 .theme-toggle i {
@@ -237,7 +263,7 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
 }
 
 [data-theme="dark"] .theme-toggle:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 65, 108, 0.1);
 }
 
 /* Update nav-links to support theme toggle at bottom */
@@ -372,8 +398,8 @@ body {
 }
 
 .nav-links a:hover {
-    background: rgba(65, 105, 225, 0.1);
-    color: var(--primary-color);
+    background: rgba(255, 65, 108, 0.1);
+    color: #FF416C;
 }
 
 @media (max-width: 768px) {
@@ -443,13 +469,14 @@ body {
 
 .btn-outline {
     padding: 15px 35px;
-    border: 2px solid #000;
+    border: 2px solid transparent;
     border-radius: 30px;
-    color: #000;
+    color: var(--text-color);
     text-decoration: none;
     font-weight: 500;
     transition: all 0.3s ease;
-    background: transparent;
+    background: linear-gradient(var(--background-color), var(--background-color)) padding-box,
+                linear-gradient(135deg, #FF416C, #FF4B2B) border-box;
 }
 
 .btn-filled {
@@ -464,8 +491,9 @@ body {
 }
 
 .btn-outline:hover {
-    background: #000;
+    background: linear-gradient(135deg, #FF416C, #FF4B2B);
     color: #fff;
+    transform: translateY(-2px);
 }
 
 .btn-filled:hover {
@@ -498,7 +526,7 @@ body {
 }
 
 .company-name:hover i {
-    color: #4169E1;
+    color: #FF416C;
 }
 
 [data-theme="dark"] .company-name {
@@ -514,7 +542,7 @@ body {
 }
 
 [data-theme="dark"] .company-name:hover i {
-    color: #4169E1;
+    color: #FF416C;
 }
 
 /* Company hover tooltip */
@@ -863,7 +891,7 @@ body {
 }
 
 .about-content .social-link:hover {
-    background: var(--primary-color);
+    background: linear-gradient(135deg, #FF416C, #FF4B2B);
     color: white;
     transform: translateY(-2px);
 }
@@ -1027,7 +1055,7 @@ textarea {
 }
 
 .social-links a:hover {
-    color: var(--primary-color);
+    color: #FF416C;
 }
 
 /* Footer */
@@ -1531,7 +1559,7 @@ footer p[data-hover]:hover {
 }
 
 .cert-link:hover {
-    text-decoration: underline;
+    color: #FF416C;
 }
 
 /* Responsive Design */
@@ -1700,7 +1728,7 @@ footer p[data-hover]:hover {
 }
 
 .company-name:hover i {
-    color: #4169E1;
+    color: #FF416C;
 }
 
 [data-theme="dark"] .company-name {
@@ -1716,7 +1744,7 @@ footer p[data-hover]:hover {
 }
 
 [data-theme="dark"] .company-name:hover i {
-    color: #4169E1;
+    color: #FF416C;
 }
 
 /* Company hover tooltip */
@@ -2557,7 +2585,7 @@ body.loading {
 }
 
 [data-theme="dark"] .cert-link:hover {
-    color: #6495ED;
+    color: #FF416C;
 }
 
 .certification-pdfs {
