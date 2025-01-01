@@ -19,7 +19,6 @@
     <link rel="stylesheet" href="css/admindark.css">
     <link rel="stylesheet" href="css/loginpage.css"> 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <meta name="theme-color" content="#4169E1" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)">
     <style>
         /* Binary Flow Background */
@@ -604,9 +603,223 @@
             height: 100px;
             width: auto;
         }
+
+        /* Notification Styles */
+        .notification-wrapper {
+            position: relative;
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff4b4b;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.2);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .notification-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            width: 320px;
+            background: var(--background-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .notification-header h3 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .notification-list {
+            padding: 0.5rem;
+        }
+
+        .notification-item {
+            padding: 0.75rem;
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+
+        .notification-item:hover {
+            background-color: var(--hover-color);
+        }
+
+        .notification-item.unread {
+            background-color: rgba(65, 105, 225, 0.1);
+        }
+
+        .notification-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            color: var(--text-color);
+        }
+
+        .notification-message {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .notification-time {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .notification-footer {
+            padding: 0.75rem;
+            text-align: center;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .notification-footer .btn-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+
+        .notification-footer .btn-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Light mode specific styles */
+        [data-theme="light"] .notification-dropdown {
+            background: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="light"] .notification-item.unread {
+            background-color: rgba(65, 105, 225, 0.05);
+        }
+
+        [data-theme="light"] #passwordResetModal .close:hover {
+            color: #333333;
+        }
+
+        /* Initial Loader Styles */
+        .loader-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: var(--background-color);
+            z-index: 99999;
+            transition: opacity 0.5s ease-out;
+        }
+
+        .loader {
+            width: 180px;
+            height: 180px;
+            position: relative;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .loader img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: brightness(0);
+            transition: filter 0.3s ease;
+        }
+
+        [data-theme="dark"] .loader-container {
+            background: var(--dark-gradient);
+        }
+
+        [data-theme="dark"] .loader img {
+            filter: brightness(100);
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.2);
+                opacity: 0.5;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        /* Hide login form initially */
+        #loginForm {
+            opacity: 0;
+        }
     </style>
 </head>
 <body>
+    <!-- Loader -->
+    <div class="loader-container">
+        <div class="loader">
+            <img src="logo/logo.png" alt="Loading...">
+        </div>
+    </div>
+
     <!-- Login Form -->
     <div id="loginForm" class="login-container">
         <div class="code-background"></div>
@@ -755,9 +968,26 @@
                     <span>Dashboard</span>
                 </div>
                 <div class="top-bar-actions">
-                    <button class="btn-icon" title="Notifications">
-                        <i class="fas fa-bell"></i>
-                    </button>
+                    <div class="notification-wrapper">
+                        <button class="btn-icon" id="notificationBtn" title="Notifications">
+                            <i class="fas fa-bell"></i>
+                            <span class="notification-badge" style="display: none;">0</span>
+                        </button>
+                        <div class="notification-dropdown" style="display: none;">
+                            <div class="notification-header">
+                                <h3>Notifications</h3>
+                                <button class="btn-icon" onclick="markAllNotificationsAsRead()">
+                                    <i class="fas fa-check-double"></i>
+                                </button>
+                            </div>
+                            <div class="notification-list">
+                                <!-- Notifications will be dynamically added here -->
+                            </div>
+                            <div class="notification-footer">
+                                <button class="btn-link" onclick="viewAllNotifications()">View All</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -796,12 +1026,6 @@
                                 <h3>Views</h3>
                                 <p id="viewCount">0</p>
                             </div>
-                        </div>
-                    </div>
-                    <div class="recent-activity">
-                        <h3>Recent Activity</h3>
-                        <div id="activityList" class="activity-list">
-                            <!-- Activity items will be loaded dynamically -->
                         </div>
                     </div>
                 </section>
@@ -951,14 +1175,7 @@
 
                 <!-- Messages Section -->
                 <section id="messagesSection" class="content-section" style="display: none;">
-                    <div class="section-header">
-                        <h2>Messages</h2>
-                    </div>
-                    <div class="section-content">
-                        <div id="messagesList" class="messages-list">
-                            <!-- Messages will be loaded dynamically -->
-                        </div>
-                    </div>
+                    <!-- The content of this section will be dynamically populated by loadMessagesSection() -->
                 </section>
 
                 <!-- Settings Section -->
@@ -1294,6 +1511,29 @@
                 toggleIcon.classList.add('fa-eye-slash');
             }
         }
+    </script>
+    <script>
+        // Initial Loader Handler
+        document.addEventListener('DOMContentLoaded', function() {
+            const loaderContainer = document.querySelector('.loader-container');
+            const loginForm = document.getElementById('loginForm');
+            
+            // Hide loader and show login form when page is loaded
+            window.addEventListener('load', function() {
+                setTimeout(() => {
+                    loaderContainer.style.opacity = '0';
+                    loaderContainer.style.pointerEvents = 'none';
+                    loginForm.style.opacity = '1';
+                    setTimeout(() => {
+                        loaderContainer.style.display = 'none';
+                    }, 500);
+                }, 1000); // Show loader for at least 1 second
+            });
+
+            // Show login form with opacity transition
+            loginForm.style.opacity = '0';
+            loginForm.style.transition = 'opacity 0.5s ease-out';
+        });
     </script>
 </body>
 </html> 

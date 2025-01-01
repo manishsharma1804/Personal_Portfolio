@@ -4,9 +4,7 @@
   "description": "Professional Portfolio and Blog",
   "start_url": "https://manishsharma1804.github.io/Personal_Portfolio/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#4169E1",
-  "orientation": "any",
+  "background_color": "#1a1a1a",
   "icons": [
     {
       "src": "AppImages/android/android-launchericon-48x48.png",

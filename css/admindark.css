@@ -1158,4 +1158,20 @@
 [data-theme="dark"] .file-link-group .btn-icon:hover {
     color: #ff4d4d;
     background: rgba(255, 77, 77, 0.1);
+}
+
+/* Message Details Content Dark Mode */
+[data-theme="dark"] .message-details-content {
+    background: var(--dark-gradient) !important;
+    color: var(--admin-text) !important;
+    border: 1px solid var(--admin-border) !important;
+}
+
+[data-theme="dark"] .message-details-content .message-info h3 {
+    color: var(--admin-text) !important;
+}
+
+[data-theme="dark"] .message-details-content .message-info p,
+[data-theme="dark"] .message-details-content .message-body {
+    color: var(--admin-text-muted) !important;
 } 

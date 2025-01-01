@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
 // Firebase configuration
 const firebaseConfig = {
@@ -187,13 +187,62 @@ async function loadBlogPosts() {
 // Contact Form Function
 async function saveContactMessage(message) {
     try {
-        await addDoc(collection(db, 'messages'), {
-            ...message,
+        // Create a new message document with all required fields
+        const messageDoc = {
+            name: message.name,
+            email: message.email,
+            message: message.message,
+            read: false,  // Always set to false for new messages
             createdAt: serverTimestamp()
-        });
+        };
+
+        // Save to Firestore
+        await addDoc(collection(db, 'messages'), messageDoc);
     } catch (error) {
         console.error('Error saving contact message:', error);
         throw error;
+    }
+}
+
+// Realtime Messages Listener
+let messagesUnsubscribe = null;
+
+function subscribeToMessages(callback) {
+    if (!isAdmin()) {
+        console.warn('User not authenticated, skipping messages subscription');
+        return;
+    }
+    
+    try {
+        // Cleanup previous subscription if exists
+        if (messagesUnsubscribe) {
+            messagesUnsubscribe();
+        }
+        
+        // Set up realtime listener for messages collection
+        const messagesRef = collection(db, 'messages');
+        messagesUnsubscribe = onSnapshot(messagesRef, (snapshot) => {
+            const messages = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            callback(messages);
+        }, (error) => {
+            console.error('Error in messages subscription:', error);
+            callback([]);
+        });
+        
+        return messagesUnsubscribe;
+    } catch (error) {
+        console.error('Error setting up messages subscription:', error);
+        callback([]);
+    }
+}
+
+function unsubscribeFromMessages() {
+    if (messagesUnsubscribe) {
+        messagesUnsubscribe();
+        messagesUnsubscribe = null;
     }
 }
 
@@ -205,9 +254,9 @@ async function loadMessages() {
         const q = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
         return querySnapshot.docs.map(doc => ({
+            ...doc.data(),
             id: doc.id,
-            read: doc.data().read || false,
-            ...doc.data()
+            read: doc.data().read ?? false
         }));
     } catch (error) {
         console.error('Error loading messages:', error);
@@ -219,14 +268,55 @@ async function loadMessages() {
 }
 
 async function markMessageAsRead(id) {
+    if (!isAdmin()) {
+        throw new Error('Access denied. Please log in first.');
+    }
     try {
         const docRef = doc(db, 'messages', id);
-        await updateDoc(docRef, {
-            read: true
-        });
+        const docSnap = await getDoc(docRef);
+        
+        if (!docSnap.exists()) {
+            throw new Error('Message not found');
+        }
+
+        const currentData = docSnap.data();
+        // Only update if the message isn't already read
+        if (!currentData.read) {
+            // Only update the read field
+            await updateDoc(docRef, {
+                read: true
+            });
+        }
         return true;
     } catch (error) {
         console.error('Error marking message as read:', error);
+        throw error;
+    }
+}
+
+async function markMessageAsUnread(id) {
+    if (!isAdmin()) {
+        throw new Error('Access denied. Please log in first.');
+    }
+    try {
+        const docRef = doc(db, 'messages', id);
+        const docSnap = await getDoc(docRef);
+        
+        if (!docSnap.exists()) {
+            throw new Error('Message not found');
+        }
+
+        const currentData = docSnap.data();
+        // Only update if the message is currently read
+        if (currentData.read) {
+            // Only update the read field
+            await updateDoc(docRef, {
+                read: false
+            });
+        }
+        return true;
+    } catch (error) {
+        console.error('Error marking message as unread:', error);
         throw error;
     }
 }
@@ -676,6 +766,136 @@ async function updateCertification(certificationData) {
     }
 }
 
+// Stats realtime listener
+let statsUnsubscribe = null;
+
+function subscribeToStats(callback) {
+    if (!isAdmin()) {
+        console.warn('User not authenticated, skipping stats subscription');
+        return;
+    }
+    
+    try {
+        const statsRef = doc(db, 'stats', 'dashboard');
+        
+        // Cleanup previous subscription if exists
+        if (statsUnsubscribe) {
+            statsUnsubscribe();
+        }
+        
+        // Set up realtime listener
+        statsUnsubscribe = onSnapshot(statsRef, (doc) => {
+            if (doc.exists()) {
+                const stats = {
+                    totalMessages: 0,
+                    unreadMessages: 0,
+                    totalProjects: 0,
+                    totalPosts: 0,
+                    ...doc.data()
+                };
+                callback(stats);
+            } else {
+                // Initialize stats if document doesn't exist
+                callback({
+                    totalMessages: 0,
+                    unreadMessages: 0,
+                    totalProjects: 0,
+                    totalPosts: 0
+                });
+            }
+        }, (error) => {
+            console.error('Error in stats subscription:', error);
+            // Don't throw error, just log it and continue
+            callback({
+                totalMessages: 0,
+                unreadMessages: 0,
+                totalProjects: 0,
+                totalPosts: 0
+            });
+        });
+        
+        return statsUnsubscribe;
+    } catch (error) {
+        console.error('Error setting up stats subscription:', error);
+        // Return default stats on error
+        callback({
+            totalMessages: 0,
+            unreadMessages: 0,
+            totalProjects: 0,
+            totalPosts: 0
+        });
+    }
+}
+
+// Update stats function
+async function updateStats() {
+    if (!isAdmin()) return;
+    
+    try {
+        const [messages, projects, posts] = await Promise.all([
+            getDocs(collection(db, 'messages')),
+            getDocs(collection(db, 'projects')),
+            getDocs(collection(db, 'blog'))
+        ]);
+        
+        const stats = {
+            totalMessages: messages.size,
+            unreadMessages: messages.docs.filter(doc => !doc.data().read).length,
+            totalProjects: projects.size,
+            totalPosts: posts.size,
+            lastUpdated: serverTimestamp()
+        };
+        
+        await setDoc(doc(db, 'stats', 'dashboard'), stats);
+        return stats;
+    } catch (error) {
+        console.error('Error updating stats:', error);
+        throw error;
+    }
+}
+
+// Cleanup function for stats subscription
+function unsubscribeFromStats() {
+    if (statsUnsubscribe) {
+        statsUnsubscribe();
+        statsUnsubscribe = null;
+    }
+}
+
+// Helper function to format dates
+function formatDate(timestamp) {
+    if (!timestamp) return '';
+    
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    // Show relative time for recent messages
+    if (days === 0) {
+        if (hours === 0) {
+            if (minutes === 0) {
+                return 'Just now';
+            }
+            return `${minutes}m ago`;
+        }
+        return `${hours}h ago`;
+    }
+    
+    // Show full date and time for older messages
+    return date.toLocaleString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true // Use 12-hour format with AM/PM
+    });
+}
+
 // Export all functions
 export {
     auth,
@@ -697,6 +917,7 @@ export {
     saveContactMessage,
     loadMessages,
     markMessageAsRead,
+    markMessageAsUnread,
     loadProfileData,
     updateProfileData,
     uploadImage,
@@ -712,5 +933,11 @@ export {
     deleteBlogComment,
     loadPublicProfileData,
     loadCertifications,
-    updateCertification
+    updateCertification,
+    subscribeToMessages,
+    unsubscribeFromMessages,
+    subscribeToStats,
+    unsubscribeFromStats,
+    updateStats,
+    formatDate
 }; 

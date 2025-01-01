@@ -1,6 +1,18 @@
 // Import Firebase functions and objects
 import { onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, query, orderBy, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { 
+    getFirestore, 
+    doc, 
+    deleteDoc, 
+    collection, 
+    query, 
+    orderBy, 
+    getDocs, 
+    updateDoc,
+    serverTimestamp,
+    getDoc,
+    onSnapshot
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 import {
     auth,
     db,
@@ -23,8 +35,15 @@ import {
     loadProfile,
     updateProfile,
     loadSkills,
-    updateSkills
+    updateSkills,
+    markMessageAsRead,
+    markMessageAsUnread,
+    subscribeToMessages,
+    unsubscribeFromMessages,
+    subscribeToStats,
+    unsubscribeFromStats
 } from './firebase-config.js';
+import { subscribeToNotifications } from './notifications.js';
 
 // Theme toggle functionality
 function initTheme() {
@@ -762,6 +781,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Add to window object immediately
 window.cancelCertification = cancelCertification;
 window.editCertification = editCertification;
+window.replyAllSelected = replyAllSelected;
 
 // Add form submission handler for Experience section
 document.addEventListener('DOMContentLoaded', function() {
@@ -996,24 +1016,90 @@ function initializeSections() {
 // Content Loading Functions
 async function loadAllContent() {
     try {
+        // Initialize notifications
+        await subscribeToNotifications();
+        
+        // Load initial data
         const [projects, posts, messages] = await Promise.all([
             loadProjects(),
             loadBlogPosts(),
-            loadMessages(),
-            loadCertificationsContent()
+            loadMessages()
         ]);
 
         currentProjects = projects || [];
         currentPosts = posts || [];
         currentMessages = messages || [];
 
-        // Create dashboard with updated content
-        createDashboard();
+        // Load all sections content
+        await Promise.all([
+            loadProfileContent(),
+            loadAboutSection(),
+            loadExperienceSection(),
+            loadProjectsSection(),
+            loadBlogSection(),
+            loadSkillsContent(),
+            loadCertificationsContent(),
+            loadMessagesSection()
+        ]);
 
+        // Initial dashboard update
+        updateDashboardUI();
+
+        // Set up real-time subscriptions
+        subscribeToStats((stats) => {
+            updateDashboardUI();
+        });
+
+        subscribeToMessages((messages) => {
+            currentMessages = messages;
+            updateDashboardUI();
+        });
+        
     } catch (error) {
         console.error('Error loading content:', error);
         showNotification('Error loading content. Please try again.', 'error');
     }
+}
+
+// Helper function to update dashboard UI
+function updateDashboardUI() {
+    const dashboardStats = document.querySelector('.dashboard-stats');
+    if (!dashboardStats) return;
+
+    const messageStats = calculateMessageStats(currentMessages);
+    dashboardStats.innerHTML = `
+        <div class="stat-card">
+            <i class="fas fa-project-diagram"></i>
+            <div class="stat-info">
+                <h3>Projects</h3>
+                <p id="projectCount">${currentProjects.length}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <i class="fas fa-blog"></i>
+            <div class="stat-info">
+                <h3>Blog Posts</h3>
+                <p id="blogCount">${currentPosts.length}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <i class="fas fa-envelope"></i>
+            <div class="stat-info">
+                <h3>Messages</h3>
+                <p id="messageCount">${messageStats.totalUniqueSenders}</p>
+                <div class="stat-details">
+                    <span><i class="fas fa-envelope"></i> <span id="unreadCount">${messageStats.sendersWithUnread}</span> unread</span>
+                </div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <i class="fas fa-eye"></i>
+            <div class="stat-info">
+                <h3>Views</h3>
+                <p id="viewCount">0</p>
+            </div>
+        </div>
+    `;
 }
 
 async function loadSectionContent(sectionId) {
@@ -1563,7 +1649,21 @@ function showSection(sectionId) {
     sections.forEach(section => {
         section.style.display = 'none';
     });
+    
+    // Show the selected section
     document.getElementById(`${sectionId}Section`).style.display = 'block';
+    
+    // Handle messages section elements visibility
+    const messagesList = document.getElementById('messagesList');
+    const messageStats = document.getElementById('messageStats');
+    const bulkActions = document.getElementById('bulkActions');
+    
+    // Show appropriate message elements only in messages section
+    if (sectionId === 'messages') {
+        if (messagesList) messagesList.style.display = 'block';
+        if (messageStats) messageStats.style.display = 'block';
+        if (bulkActions) bulkActions.style.display = 'none';
+    }
     
     // Update breadcrumb
     const breadcrumbText = sectionId.charAt(0).toUpperCase() + sectionId.slice(1);
@@ -2675,550 +2775,214 @@ async function loadBlogSection() {
 
 // Add to window object
 window.cancelExperience = cancelExperience;
-window.cancelProjectEdit = cancelProjectEdit;
-window.cancelBlogEdit = cancelBlogEdit;
 
 // Message Functions
 async function deleteMessage(messageId) {
-    if (confirm('Are you sure you want to delete this message?')) {
-        try {
-            await deleteMessageFromDB(messageId);
-            await loadMessagesSection(); // Reload messages after deletion
-            await createDashboard(); // Update dashboard stats
-            showNotification('Message deleted successfully', 'success');
-        } catch (error) {
-            console.error('Error deleting message:', error);
-            showNotification('Failed to delete message', 'error');
-        }
-    }
-}
-
-
-
-async function markMessageAsRead(messageId) {
     try {
+        // Confirm deletion
+        if (!confirm('Are you sure you want to delete this message?')) {
+            return;
+        }
+
+        // Delete from Firestore
         const messageRef = doc(db, 'messages', messageId);
-        await updateDoc(messageRef, {
-            read: true,
-            readAt: serverTimestamp()
-        });
+        await deleteDoc(messageRef);
         
         // Update local state
-        const message = currentMessages.find(msg => msg.id === messageId);
-        if (message) {
-            message.read = true;
-            message.readAt = new Date().toISOString();
-        }
-    } catch (error) {
-        console.error('Error marking message as read:', error);
-        throw error;
-    }
-}
-
-async function markMessageAsUnread(messageId) {
-    try {
-        const messageRef = doc(db, 'messages', messageId);
-        await updateDoc(messageRef, {
-            read: false,
-            readAt: null
-        });
+        currentMessages = currentMessages.filter(msg => msg.id !== messageId);
         
-        // Update local state
-        const message = currentMessages.find(msg => msg.id === messageId);
-        if (message) {
-            message.read = false;
-            message.readAt = null;
-        }
-    } catch (error) {
-        console.error('Error marking message as unread:', error);
-        throw error;
-    }
-}
-
-async function toggleMessageRead(messageId, isRead) {
-    try {
-        if (isRead) {
-            await markMessageAsUnread(messageId);
-        } else {
-            await markMessageAsRead(messageId);
-        }
+        // Update dashboard
         await createDashboard();
-        showMessageDetails(messageId);
-        showNotification(`Message marked as ${isRead ? 'unread' : 'read'}`, 'success');
-    } catch (error) {
-        console.error('Error toggling message read status:', error);
-        showNotification('Failed to update message status', 'error');
-    }
-}
-
-async function loadMessagesSection() {
-    try {
-        // Initialize pagination and filter state
-        window.currentPage = 1;
-        window.currentFilters = {
-            read: 'all',
-            date: 'all'
-        };
-
-        // Get messages from database
-        const messages = await getMessagesFromDB();
-        window.currentMessages = messages;
         
-        // Initialize message list container
-        const messagesContainer = document.getElementById('messagesSection');
-        if (!messagesContainer) {
-            throw new Error('Messages container not found');
+        // Find the deleted message element and remove it
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (messageElement) {
+            messageElement.remove();
+        }
+
+        // If no messages left in conversation, return to messages list
+        const remainingMessages = currentMessages.filter(msg => msg.email === messageElement?.dataset.email);
+        if (remainingMessages.length === 0) {
+            await loadMessagesSection();
         }
         
-        messagesContainer.innerHTML = `
-            <div class="section-header">
-                <h2>Messages</h2>
-                <div class="section-actions">
-                    <button class="icon-button" onclick="toggleMessageSearch()">
-                        <i class="fas fa-search"></i>
-                        Search
-                    </button>
-                    <button class="icon-button" onclick="toggleMessageFilter()">
-                        <i class="fas fa-filter"></i>
-                        Filter
-                    </button>
-                </div>
-            </div>
-            <div class="search-bar" style="display: none;">
-                <div class="search-input-container">
-                    <input type="text" placeholder="Search messages..." oninput="handleMessageSearch()">
-                    <button class="clear-search" onclick="clearMessageSearch()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="filter-bar" style="display: none;">
-                <div class="filter-group">
-                    <label>Status:</label>
-                    <select onchange="applyMessageFilters()">
-                        <option value="all">All</option>
-                        <option value="read">Read</option>
-                        <option value="unread">Unread</option>
-                    </select>
-                    <label>Date:</label>
-                    <select onchange="applyMessageFilters()">
-                        <option value="all">All time</option>
-                        <option value="today">Today</option>
-                        <option value="week">This week</option>
-                        <option value="month">This month</option>
-                    </select>
-                    <button class="clear-filters" onclick="clearMessageFilters()">
-                        Clear Filters
-                    </button>
-                </div>
-            </div>
-            <div class="messages-list">
-                <div class="bulk-actions">
-                    <div class="message-checkbox">
-                        <input type="checkbox" onchange="toggleAllMessages()">
-                    </div>
-                    <button class="icon-button" onclick="markSelectedMessagesAsRead()">
-                        <i class="fas fa-envelope-open"></i>
-                        Mark as Read
-                    </button>
-                    <button class="icon-button" onclick="markSelectedMessagesAsUnread()">
-                        <i class="fas fa-envelope"></i>
-                        Mark as Unread
-                    </button>
-                    <button class="icon-button" onclick="deleteSelectedMessages()">
-                        <i class="fas fa-trash"></i>
-                        Delete Selected
-                    </button>
-                </div>
-                <div id="messages-container"></div>
-            </div>
-            <div class="pagination" id="messages-pagination"></div>`;
-
-        // Initialize message handlers
-        initializeMessageListHandlers();
-
+        showNotification('Message deleted successfully', 'success');
     } catch (error) {
-        console.error('Error loading messages:', error);
-        showNotification('Failed to load messages. Please try again.', 'error');
+        console.error('Error deleting message:', error);
+        showNotification('Failed to delete message', 'error');
     }
 }
 
-function renderMessagesList(messages, page, filters) {
-    if (!messages || messages.length === 0) {
-        return `<div class="no-messages">No messages found</div>`;
-    }
 
-    const startIndex = (page - 1) * 10;
-    const endIndex = startIndex + 10;
-    const displayedMessages = messages.slice(startIndex, endIndex);
 
-    return displayedMessages.map(message => {
-        const date = new Date(message.createdAt);
-        const formattedDate = date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        return `
-            <div class="message-item ${message.read ? '' : 'message-unread'}" data-id="${message.id}">
-                <div class="message-checkbox">
-                    <input type="checkbox" class="message-select" data-id="${message.id}">
-                </div>
-                <div class="message-content" onclick="showMessageDetails(${JSON.stringify(message).replace(/"/g, '&quot;')})">
-                    <div class="message-info">
-                        <div class="message-header">
-                            <span class="message-name">${message.name}</span>
-                            <span class="message-date">${formattedDate}</span>
-                        </div>
-                        <div class="message-email">${message.email}</div>
-                        <div class="message-preview">${message.message.substring(0, 100)}${message.message.length > 100 ? '...' : ''}</div>
-                    </div>
-                </div>
-                <div class="message-actions">
-                    <button class="icon-button" onclick="event.stopPropagation(); toggleMessageRead('${message.id}', ${!message.read})">
-                        <i class="fas ${message.read ? 'fa-envelope' : 'fa-envelope-open'}"></i>
-                    </button>
-                    <button class="icon-button danger" onclick="event.stopPropagation(); deleteMessage('${message.id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-function renderPagination(totalMessages, currentPage) {
-    const totalPages = Math.ceil(totalMessages / 10);
-    if (totalPages <= 1) return '';
-
-    let paginationHtml = '<div class="pagination">';
-    
-    // Previous button
-    paginationHtml += `
-        <button ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(${currentPage - 1})">
-            <i class="fas fa-chevron-left"></i>
-        </button>
-    `;
-
-    // Page numbers
-    for (let i = 1; i <= totalPages; i++) {
-        if (i === currentPage) {
-            paginationHtml += `<button class="active">${i}</button>`;
-        } else if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
-            paginationHtml += `<button onclick="changePage(${i})">${i}</button>`;
-        } else if (i === currentPage - 2 || i === currentPage + 2) {
-            paginationHtml += '<span class="ellipsis">...</span>';
-        }
-    }
-
-    // Next button
-    paginationHtml += `
-        <button ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(${currentPage + 1})">
-            <i class="fas fa-chevron-right"></i>
-        </button>
-    `;
-
-    paginationHtml += '</div>';
-    return paginationHtml;
-}
-
-function changePage(newPage) {
-    const elements = window.messageElements;
-    if (!elements) return;
-
-    window.currentPage = newPage;
-    renderCurrentView();
-}
-
-// Add styles for new message management system
-const msgStyles = document.createElement('style');
-msgStyles.textContent = `
-    .msg-section-header {
-        padding: 1rem;
-        border-bottom: 1px solid var(--border-color);
-    }
-
-    .msg-header-left {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .msg-controls {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-    .msg-btn {
-        padding: 0.5rem 1rem;
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
-        background: var(--bg-secondary);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        transition: all 0.2s;
-    }
-
-    .msg-btn:hover {
-        background: var(--bg-hover);
-    }
-
-    .msg-btn.danger {
-        background: #dc3545;
-        color: white;
-        border-color: #dc3545;
-    }
-
-    .msg-btn.danger:hover {
-        background: #c82333;
-    }
-
-    .msg-search-bar, .msg-filter-bar {
-        padding: 1rem;
-        border-bottom: 1px solid var(--border-color);
-        background: var(--bg-secondary);
-    }
-
-    .search-input-group {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-    .search-input-group input {
-        flex: 1;
-        padding: 0.5rem;
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
-    }
-
-    .msg-list {
-        padding: 1rem;
-    }
-
-    .msg-item {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 1rem;
-        padding: 1rem;
-        border-bottom: 1px solid var(--border-color);
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-
-    .msg-item:hover {
-        background: var(--bg-hover);
-    }
-
-    .msg-unread {
-        background: var(--bg-unread);
-    }
-
-    .msg-checkbox {
-        display: flex;
-        align-items: center;
-    }
-
-    .msg-checkbox input {
-        width: 18px;
-        height: 18px;
-        cursor: pointer;
-    }
-
-    .msg-content {
-        flex: 1;
-    }
-
-    .msg-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 0.5rem;
-    }
-
-    .msg-sender h4 {
-        margin: 0;
-        color: var(--text-primary);
-    }
-
-    .msg-sender p {
-        margin: 0;
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-    }
-
-    .msg-meta {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .msg-date {
-        color: var(--text-secondary);
-        font-size: 0.9rem;
-    }
-
-    .msg-preview {
-        color: var(--text-secondary);
-        font-size: 0.95rem;
-    }
-
-    .msg-pagination {
-        padding: 1rem;
-        display: flex;
-        justify-content: center;
-        gap: 0.5rem;
-    }
-
-    .msg-page-btn {
-        padding: 0.5rem 1rem;
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
-        background: var(--bg-secondary);
-        cursor: pointer;
-    }
-
-    .msg-page-btn.active {
-        background: var(--primary-color);
-        color: white;
-        border-color: var(--primary-color);
-    }
-
-    .msg-page-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    .msg-empty {
-        text-align: center;
-        padding: 2rem;
-        color: var(--text-secondary);
-    }
-`;
-
-document.head.appendChild(msgStyles);
-
-// Function to toggle all message checkboxes
-function toggleAllMessages() {
-    const checkboxes = document.querySelectorAll('.message-select');
-    const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = !allChecked;
-    });
-}
-
-// Function to delete selected messages
-async function deleteSelectedMessages() {
-    const selectedMessages = document.querySelectorAll('.message-select:checked');
+async function markSelectedMessagesAsRead() {
+    const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
     if (selectedMessages.length === 0) {
         showNotification('No messages selected', 'error');
         return;
     }
 
-    if (confirm(`Are you sure you want to delete ${selectedMessages.length} selected message(s)?`)) {
-        try {
-            const deletePromises = Array.from(selectedMessages).map(checkbox => {
-                const messageId = checkbox.closest('.message-item').dataset.messageId;
-                return deleteMessageFromDB(messageId);
-            });
-
-            await Promise.all(deletePromises);
-            await loadMessagesSection();
-            await createDashboard();
-            showNotification('Selected messages deleted successfully', 'success');
-        } catch (error) {
-            console.error('Error deleting messages:', error);
-            showNotification('Failed to delete some messages', 'error');
-        }
+    try {
+        const updatePromises = Array.from(selectedMessages).map(async checkbox => {
+            const messageId = checkbox.dataset.messageId;
+            await markMessageAsRead(messageId);
+        
+            // Update local state
+            const message = currentMessages.find(msg => msg.id === messageId);
+            if (message) {
+                message.read = true;
+                message.readAt = new Date().toISOString();
+            }
+        });
+        
+        await Promise.all(updatePromises);
+        await loadMessagesSection();
+        await createDashboard();
+        showNotification('Messages marked as read', 'success');
+    } catch (error) {
+        console.error('Error marking messages as read:', error);
+        showNotification('Failed to mark messages as read', 'error');
     }
 }
 
-// Function to delete all messages
-async function deleteAllMessages() {
-    if (currentMessages.length === 0) {
-        showNotification('No messages to delete', 'error');
+async function markSelectedMessagesAsUnread() {
+    const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
+    if (selectedMessages.length === 0) {
+        showNotification('No messages selected', 'error');
         return;
     }
 
-    if (confirm(`Are you sure you want to delete all ${currentMessages.length} messages? This action cannot be undone.`)) {
-        try {
-            const deletePromises = currentMessages.map(message => deleteMessageFromDB(message.id));
-            await Promise.all(deletePromises);
-            await loadMessagesSection();
-            await createDashboard();
-            showNotification('All messages deleted successfully', 'success');
-        } catch (error) {
-            console.error('Error deleting all messages:', error);
-            showNotification('Failed to delete all messages', 'error');
-        }
+    try {
+        const updatePromises = Array.from(selectedMessages).map(async checkbox => {
+            const messageId = checkbox.dataset.messageId;
+            await markMessageAsUnread(messageId);
+            
+            // Update local state
+            const message = currentMessages.find(msg => msg.id === messageId);
+            if (message) {
+                message.read = false;
+                message.readAt = null;
+            }
+        });
+
+        await Promise.all(updatePromises);
+        await loadMessagesSection();
+        await createDashboard();
+        showNotification('Messages marked as unread', 'success');
+    } catch (error) {
+        console.error('Error marking messages as unread:', error);
+        showNotification('Failed to mark messages as unread', 'error');
     }
 }
 
-// Add to window object
-window.toggleAllMessages = toggleAllMessages;
-window.deleteSelectedMessages = deleteSelectedMessages;
-window.deleteAllMessages = deleteAllMessages;
 
-function showMessageDetails(message) {
-    const messagesContent = document.getElementById('messagesContent');
-    const date = new Date(message.createdAt);
-    const formattedDate = date.toLocaleDateString();
-    const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// Helper function to calculate message stats
+function calculateMessageStats(messages) {
+    const messagesByEmail = messages.reduce((acc, msg) => {
+        if (!acc[msg.email]) {
+            acc[msg.email] = {
+                hasUnread: false,
+                messages: []
+            };
+        }
+        acc[msg.email].messages.push(msg);
+        if (!msg.read) {
+            acc[msg.email].hasUnread = true;
+        }
+        return acc;
+    }, {});
     
-    const detailsView = `
-        <div class="message-details">
-            <div class="details-header">
-                <button onclick="loadMessagesSection()" class="btn-icon" title="Back to Messages">
-                    <i class="fas fa-arrow-left"></i>
-                </button>
-                <h3>Message Details</h3>
-            </div>
-            <div class="details-content">
-                <div class="sender-info">
-                    <h4>${message.name}</h4>
-                    <p>${message.email}</p>
-                    <p class="date">${formattedDate} ${formattedTime}</p>
-                </div>
-                <div class="message-body">
-                    <p>${message.message}</p>
-                </div>
-                <div class="details-actions">
-                    <button onclick="window.location.href='mailto:${message.email}'" class="btn primary">
-                        <i class="fas fa-reply"></i> Reply
-                    </button>
-                    <button onclick="deleteMessage('${message.id}')" class="btn danger">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    messagesContent.innerHTML = detailsView;
+    return {
+        totalUniqueSenders: Object.keys(messagesByEmail).length,
+        sendersWithUnread: Object.values(messagesByEmail).filter(sender => sender.hasUnread).length,
+        messagesByEmail
+    };
 }
 
-// Add to window object
-window.deleteMessage = deleteMessage;
-window.toggleMessageRead = toggleMessageRead;
-window.loadMessagesSection = loadMessagesSection;
+// Helper function to update message stats
+function updateMessageStats(messages) {
+    const stats = calculateMessageStats(messages);
+    
+    // Update UI elements showing message stats
+    const statsElement = document.getElementById('messageStats');
+    if (statsElement) {
+        statsElement.innerHTML = `
+            <div class="stat-item">
+                <span class="stat-label">Senders with Unread:</span>
+                <span class="stat-value">${stats.sendersWithUnread}</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Total Senders:</span>
+                <span class="stat-value">${stats.totalUniqueSenders}</span>
+            </div>
+        `;
+    }
+}
+
+// Helper function to update dashboard stats
+function updateDashboardStats(stats) {
+    const dashboardStats = document.getElementById('dashboardStats');
+    if (!dashboardStats) return;
+    
+    const messageStats = calculateMessageStats(currentMessages);
+    
+    // Update dashboard stats UI
+    dashboardStats.innerHTML = `
+        <div class="stat-card">
+            <div class="stat-title">Messages</div>
+            <div class="stat-value">${messageStats.totalUniqueSenders}</div>
+            <div class="stat-subtitle">Unread: ${messageStats.sendersWithUnread}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Projects</div>
+            <div class="stat-value">${stats.totalProjects || 0}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Blog Posts</div>
+            <div class="stat-value">${stats.totalPosts || 0}</div>
+        </div>
+    `;
+}
+
+// Function to toggle support status for a conversation
+function toggleConversationSupport(email) {
+    const button = document.querySelector('.toggle-support');
+    const icon = document.getElementById('conversationSupportIcon');
+    
+    if (button && icon) {
+        button.classList.toggle('active');
+        // Store the support status in local storage or your database
+        const isSupport = button.classList.contains('active');
+        localStorage.setItem(`support_${email}`, isSupport);
+        
+        showNotification(`Conversation ${isSupport ? 'marked' : 'unmarked'} for support`, 'success');
+    }
+}
+
+
+window.toggleConversationSupport = toggleConversationSupport;
 
 async function createDashboard() {
     try {
-        // Update counts
-        document.getElementById('projectCount').textContent = currentProjects.length;
-        document.getElementById('blogCount').textContent = currentPosts.length;
-        document.getElementById('messageCount').textContent = currentMessages.length;
+        // Initial update with current data
+        const messageStats = calculateMessageStats(currentMessages);
+        updateDashboardCounts(messageStats);
         
-        // Update unread count
-        const unreadCount = currentMessages.filter(msg => !msg.read).length;
-        document.getElementById('unreadCount').textContent = unreadCount;
+        // Subscribe to real-time stats updates
+        subscribeToStats((stats) => {
+            const messageStats = calculateMessageStats(currentMessages);
+            updateDashboardCounts(messageStats);
+        });
     } catch (error) {
         console.error('Error creating dashboard:', error);
     }
+}
+
+function updateDashboardCounts(messageStats) {
+    document.getElementById('projectCount').textContent = currentProjects.length;
+    document.getElementById('blogCount').textContent = currentPosts.length;
+    document.getElementById('messageCount').textContent = messageStats.totalUniqueSenders;
+    document.getElementById('unreadCount').textContent = messageStats.sendersWithUnread;
 }
 
 // Modal Functions
@@ -3390,31 +3154,12 @@ function setReadMode(sectionElement) {
 // Logout Function
 async function logout() {
     try {
-        // First sign out from Firebase
+        // Cleanup subscriptions
+        unsubscribeFromStats();
+        unsubscribeFromMessages();
+        
         await signOut(auth);
-        
-        // Hide the dashboard immediately
-        const adminDashboard = document.getElementById('adminDashboard');
-        if (adminDashboard) adminDashboard.style.display = 'none';
-
-        // Show login form
-        const loginForm = document.getElementById('loginForm');
-        if (loginForm) {
-            loginForm.style.display = 'flex';
-            
-            // Clear form fields
-            const emailField = document.getElementById('adminEmail');
-            const passwordField = document.getElementById('adminPassword');
-            if (emailField) emailField.value = '';
-            if (passwordField) passwordField.value = '';
-        }
-
-        // Clear any stored data
-        localStorage.removeItem('theme');
-        
-        // Reload the page to reset all states
         window.location.reload();
-
     } catch (error) {
         console.error('Error signing out:', error);
         showNotification('Error signing out. Please try again.', 'error');
@@ -3455,10 +3200,6 @@ window.closeModal = closeModal;
 window.logout = logout;
 window.editExperience = editExperience;
 window.deleteExperience = deleteExperience;
-window.editProject = editProject;
-window.deleteProject = handleDeleteProject;
-window.editBlogPost = editBlogPost;
-window.deleteBlogPost = handleDeleteBlogPost;
 window.deleteMessage = deleteMessage;
 window.addSocialLinkField = addSocialLinkField;
 window.removeSocialLink = removeSocialLink;
@@ -3478,9 +3219,6 @@ window.deleteSkillCategory = deleteSkillCategory;
 window.confirmDeleteCategory = confirmDeleteCategory;
 window.showToast = showToast;
 window.showNotification = showNotification;
-window.loadRecentActivity = loadRecentActivity;
-window.loadExperienceSection = loadExperienceSection;
-window.loadSkillsContent = loadSkillsContent;
 
 // Initialize dashboard if user is already logged in
 onAuthStateChanged(auth, user => {
@@ -3831,8 +3569,6 @@ window.updateSkillLevel = updateSkillLevel;
 window.updateSkillIcon = updateSkillIcon;
 window.cancelSkillsEdit = cancelSkillsEdit;
 window.showAddSkillDialog = showAddSkillDialog;
-window.proceedToAddSkill = proceedToAddSkill;
-window.saveNewSkill = saveNewSkill;
 
 // Skills Functions
 function addSkillCategory(category = { name: '', skills: [] }) {
@@ -4107,6 +3843,7 @@ window.confirmDeleteCategory = confirmDeleteCategory;
 
 // Add to window object
 window.loadMessagesSection = loadMessagesSection; 
+window.showMessageDetails = showMessageDetails;
 
 function createCertificationCard(certification) {
     const { title, organization, issueDate, expiryDate, credentialId, credentialUrl, files, certificationSkills } = certification;
@@ -4170,14 +3907,42 @@ function createCertificationCard(certification) {
 }
 
 // Helper function to format date in YYYY-MM format
-function formatDate(dateString, format = 'MMMM YYYY') {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    if (format === 'YYYY-MM') {
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+function formatDate(dateInput, format = 'MMMM YYYY') {
+    if (!dateInput) return 'N/A';
+    
+    let date;
+    
+    // Handle Firestore Timestamp
+    if (dateInput?.toDate && typeof dateInput.toDate === 'function') {
+        date = dateInput.toDate();
     }
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+    // Handle Date object
+    else if (dateInput instanceof Date) {
+        date = dateInput;
+    }
+    // Handle string or number
+    else {
+        date = new Date(dateInput);
+    }
+    
+    // Return empty string if date is invalid
+    if (isNaN(date.getTime())) return '';
+    
+    if (format === 'MMMM YYYY') {
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long'
+        });
+    }
+    
+    // Default format for messages and other cases
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 async function saveCertification(event) {
@@ -4357,65 +4122,23 @@ window.showNotification = showNotification;
 // Add styles for message management
 const messageStyles = document.createElement('style');
 messageStyles.textContent = `
-    .bulk-actions {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-    }
-
-    .message-checkbox {
-        display: flex;
-        align-items: center;
-        padding: 0 10px;
-    }
-
-    .message-checkbox input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        cursor: pointer;
-    }
-
-    .message-item {
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        align-items: center;
-        padding: 15px;
-        border-bottom: 1px solid #eee;
-        transition: background-color 0.3s;
-    }
-
-    .message-item:hover {
-        background-color: #f8f9fa;
-    }
-
-    .message-unread {
-        background-color: #f0f7ff;
-    }
-
-    .message-unread:hover {
-        background-color: #e5f1ff;
-    }
-
-    .message-actions {
-        display: flex;
-        gap: 8px;
-    }
-
-    .btn.danger {
-        background-color: #dc3545;
+    /* Message Management Styles */
+    .replied-badge {
+        background: #28a745;
         color: white;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        margin-left: 8px;
     }
 
-    .btn.danger:hover {
-        background-color: #c82333;
-    }
-
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 15px;
-        border-bottom: 1px solid #eee;
+    .not-replied-badge {
+        background: #6c757d;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        margin-left: 8px;
     }
 
     /* Message Section Styles */
@@ -4512,9 +4235,39 @@ messageStyles.textContent = `
         background: white;
         cursor: pointer;
     }
-    
+
     .clear-filters:hover {
         background: #f5f5f5;
+    }
+
+    /* Bulk Actions Styles */
+    .bulk-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f5f5f5;
+        border-radius: 4px;
+    }
+    
+    .bulk-actions button {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: white;
+        cursor: pointer;
+    }
+    
+    .bulk-actions button:hover:not(:disabled) {
+        background: #f5f5f5;
+    }
+    
+    .bulk-actions button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
     
     /* Messages List Styles */
@@ -4622,7 +4375,7 @@ messageStyles.textContent = `
         background: white;
         cursor: pointer;
     }
-    
+
     .pagination button:hover:not(:disabled) {
         background: #f5f5f5;
     }
@@ -4658,90 +4411,6 @@ messageStyles.textContent = `
         background: #f5f5f5;
         border-bottom: 1px solid #ddd;
     }
-    
-    .back-button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .back-button:hover {
-        background: #f5f5f5;
-    }
-    
-    .message-actions {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .message-actions button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .message-actions button:hover {
-        background: #f5f5f5;
-    }
-    
-    .message-actions .delete-button {
-        border-color: #dc3545;
-        color: #dc3545;
-    }
-    
-    .message-actions .delete-button:hover {
-        background: #dc3545;
-        color: white;
-    }
-    
-    .message-detail-content {
-        padding: 2rem;
-    }
-    
-    .message-detail-info {
-        margin-bottom: 2rem;
-    }
-    
-    .message-detail-info h3 {
-        margin: 0 0 0.5rem 0;
-        color: #333;
-    }
-    
-    .message-detail-email {
-        margin: 0 0 0.25rem 0;
-        color: #666;
-    }
-    
-    .message-detail-date {
-        margin: 0;
-        color: #666;
-        font-size: 0.9em;
-    }
-    
-    .message-detail-body {
-        color: #333;
-        line-height: 1.6;
-    }
-    
-    .message-detail-body p {
-        margin: 0 0 1rem 0;
-    }
-    
-    .message-detail-body p:last-child {
-        margin-bottom: 0;
-    }
 `;
 
 document.head.appendChild(messageStyles);
@@ -4756,302 +4425,155 @@ let currentFilters = {
 
 // Initialize message list handlers
 function initializeMessageListHandlers() {
-    const searchToggle = document.querySelector('.icon-button[onclick="toggleMessageSearch()"]');
-    const filterToggle = document.querySelector('.icon-button[onclick="toggleMessageFilter()"]');
-    const searchBar = document.querySelector('.search-bar');
-    const filterBar = document.querySelector('.filter-bar');
-    const messagesContainer = document.getElementById('messages-container');
-    const pagination = document.getElementById('messages-pagination');
+    const messagesList = document.getElementById('messagesList');
+    if (!messagesList) return;
 
-    if (!searchToggle || !filterToggle || !searchBar || !filterBar || !messagesContainer || !pagination) {
-        console.error('Required message elements not found');
-        return;
-    }
+    // Add click event listeners for message selection
+    messagesList.addEventListener('click', (event) => {
+        const messageItem = event.target.closest('.message-item');
+        if (!messageItem) return;
 
-    // Store references to DOM elements
-    window.messageElements = {
-        searchToggle,
-        filterToggle,
-        searchBar,
-        filterBar,
-        messagesContainer,
-        pagination,
-        searchVisible: false,
-        filterVisible: false
-    };
-
-    // Initial render
-    renderCurrentView();
-}
-
-// Toggle message selection mode
-function toggleMessageSelection() {
-    const checkboxes = document.querySelectorAll('.msg-checkbox');
-    const bulkActions = document.getElementById('msgBulkActions');
-    const selectToggle = document.getElementById('msgSelectToggle');
-    
-    const isSelectionMode = checkboxes[0]?.style.display === 'flex';
-    
-    checkboxes.forEach(checkbox => {
-        checkbox.style.display = isSelectionMode ? 'none' : 'flex';
-        checkbox.querySelector('input').checked = false;
+        if (event.ctrlKey || event.metaKey) {
+            messageItem.classList.toggle('selected');
+            updateBulkActionState();
+        } else {
+            // Single message selection
+            document.querySelectorAll('.message-item.selected').forEach(item => {
+                item.classList.remove('selected');
+            });
+            messageItem.classList.add('selected');
+            updateBulkActionState();
+        }
     });
-    
-    bulkActions.style.display = isSelectionMode ? 'none' : 'flex';
-    selectToggle.classList.toggle('active', !isSelectionMode);
+
+    // Initialize select all checkbox
+    const selectAllCheckbox = document.getElementById('selectAllMessages');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', (event) => {
+            const messages = document.querySelectorAll('.message-item');
+            messages.forEach(message => {
+                message.classList.toggle('selected', event.target.checked);
+            });
+    updateBulkActionState();
+        });
+    }
 }
+
+
 
 // Handle message selection
 function handleMessageSelect(event) {
     event.stopPropagation();
-    updateBulkActionState();
+    
+    const checkbox = event.target;
+    const messageId = checkbox.dataset.messageId;
+    const isChecked = checkbox.checked;
+    
+    // Update message item UI
+    const messageItem = checkbox.closest('.message-item, .message-thread-item');
+    if (messageItem) {
+        messageItem.classList.toggle('selected', isChecked);
+    }
+    
+    updateBulkActionButtons();
 }
+
+
 
 // Select all visible messages
-function selectAllVisibleMessages() {
-    const checkboxes = document.querySelectorAll('.msg-checkbox input:not([disabled])');
-    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+function selectAllVisibleMessages(event) {
+    const isChecked = event.target.checked;
+    const checkboxes = document.querySelectorAll('.message-checkbox');
     
     checkboxes.forEach(checkbox => {
-        checkbox.checked = !allChecked;
+        checkbox.checked = isChecked;
+        const messageItem = checkbox.closest('.message-item');
+        if (messageItem) {
+            messageItem.classList.toggle('selected', isChecked);
+        }
     });
     
-    updateBulkActionState();
+    updateBulkActionButtons();
 }
 
-// Update bulk action buttons state
-function updateBulkActionState() {
-    const selectedCount = document.querySelectorAll('.msg-checkbox input:checked').length;
-    const bulkButtons = document.querySelectorAll('#msgBulkActions button:not(#msgSelectAll)');
+// Reset selection mode
+function resetSelectionMode() {
+    const selectAllContainer = document.querySelector('.select-all-container');
+    const messageCheckboxes = document.querySelectorAll('.message-select, .msg-checkbox');
+    const selectBtn = document.querySelector('.conversation-select-btn');
+    const bulkActions = document.getElementById('msgBulkActions');
+    const selectToggle = document.getElementById('msgSelectToggle');
     
-    bulkButtons.forEach(button => {
-        button.disabled = selectedCount === 0;
+    // Hide select all and checkboxes
+    if (selectAllContainer) {
+        selectAllContainer.style.display = 'none';
+    }
+    messageCheckboxes.forEach(checkbox => {
+        checkbox.style.display = 'none';
     });
-}
-
-// Toggle search bar
-function toggleMessageSearch() {
-    const elements = window.messageElements;
-    if (!elements) return;
     
-    elements.searchVisible = !elements.searchVisible;
-    elements.filterVisible = false;
-    renderCurrentView();
-}
-
-// Handle message search
-function handleMessageSearch() {
-    const searchInput = document.getElementById('msgSearchInput');
-    currentFilters.search = searchInput.value.toLowerCase();
-    currentPage = 1;
-    renderCurrentView();
-}
-
-// Clear message search
-function clearMessageSearch() {
-    const searchInput = document.getElementById('msgSearchInput');
-    searchInput.value = '';
-    currentFilters.search = '';
-    renderCurrentView();
-}
-
-// Toggle filter bar
-function toggleMessageFilter() {
-    const elements = window.messageElements;
-    if (!elements) return;
+    // Reset button text
+    if (selectBtn) {
+        selectBtn.textContent = 'Select Conversation';
+    }
     
-    elements.filterVisible = !elements.filterVisible;
-    elements.searchVisible = false;
-    renderCurrentView();
-}
-
-// Apply message filters
-function applyMessageFilters() {
-    const statusFilter = document.getElementById('msgStatusFilter');
-    const dateFilter = document.getElementById('msgDateFilter');
+    // Hide bulk actions and deactivate toggle
+    if (bulkActions) {
+        bulkActions.style.display = 'none';
+    }
+    if (selectToggle) {
+        selectToggle.classList.remove('active');
+    }
     
-    currentFilters.status = statusFilter.value;
-    currentFilters.date = dateFilter.value;
-    currentPage = 1;
-    renderCurrentView();
-}
-
-// Clear message filters
-function clearMessageFilters() {
-    const statusFilter = document.getElementById('msgStatusFilter');
-    const dateFilter = document.getElementById('msgDateFilter');
-    
-    statusFilter.value = 'all';
-    dateFilter.value = 'all';
-    currentFilters.status = 'all';
-    currentFilters.date = 'all';
-    renderCurrentView();
-}
-
-// Filter messages based on current filters
-function filterMessages(messages, filters) {
-    return messages.filter(message => {
-        // Search filter
-        if (filters.search) {
-            const searchTerm = filters.search.toLowerCase();
-            const matchesSearch = message.name.toLowerCase().includes(searchTerm) ||
-                                message.email.toLowerCase().includes(searchTerm);
-            if (!matchesSearch) return false;
-        }
-        
-        // Status filter
-        if (filters.status !== 'all') {
-            const isRead = message.read;
-            if (filters.status === 'read' && !isRead) return false;
-            if (filters.status === 'unread' && isRead) return false;
-        }
-        
-        // Date filter
-        if (filters.date !== 'all') {
-            const messageDate = new Date(message.createdAt);
-            const now = new Date();
-            
-            switch (filters.date) {
-                case 'today':
-                    if (!isSameDay(messageDate, now)) return false;
-                    break;
-                case 'week':
-                    if (!isThisWeek(messageDate, now)) return false;
-                    break;
-                case 'month':
-                    if (!isThisMonth(messageDate, now)) return false;
-                    break;
-            }
-        }
-        
-        return true;
+    // Uncheck all checkboxes
+    document.querySelectorAll('.message-checkbox, .select-all-checkbox').forEach(cb => {
+        cb.checked = false;
     });
-}
-
-// Date helper functions
-function isSameDay(date1, date2) {
-    return date1.getDate() === date2.getDate() &&
-           date1.getMonth() === date2.getMonth() &&
-           date1.getFullYear() === date2.getFullYear();
-}
-
-function isThisWeek(date, now) {
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
     
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
-    weekEnd.setHours(23, 59, 59, 999);
+    // Remove selected class from all message types
+    document.querySelectorAll('.message-item, .message-thread-item').forEach(item => {
+        item.classList.remove('selected');
+    });
     
-    return date >= weekStart && date <= weekEnd;
-}
-
-function isThisMonth(date, now) {
-    return date.getMonth() === now.getMonth() &&
-           date.getFullYear() === now.getFullYear();
-}
-
-
-
-// Render current view based on filters and pagination
-function renderCurrentView() {
-    const elements = window.messageElements;
-    if (!elements) {
-        console.error('Message elements not initialized');
-        return;
-    }
-
-    // Update search bar visibility
-    if (elements.searchBar) {
-        elements.searchBar.style.display = elements.searchVisible ? 'block' : 'none';
-        if (elements.searchToggle) {
-            elements.searchToggle.classList.toggle('active', elements.searchVisible);
+    // Reset button states to default
+    const buttons = {
+        'delete-all': 'Delete All',
+        'reply-all': 'Reply All',
+        'mark-read': '',
+        'mark-unread': ''
+    };
+    
+    Object.entries(buttons).forEach(([action, label]) => {
+        const button = document.querySelector(`[data-action="${action}"]`);
+        if (button) {
+            button.textContent = label;
+            button.disabled = false;
         }
-    }
-
-    // Update filter bar visibility
-    if (elements.filterBar) {
-        elements.filterBar.style.display = elements.filterVisible ? 'block' : 'none';
-        if (elements.filterToggle) {
-            elements.filterToggle.classList.toggle('active', elements.filterVisible);
-        }
-    }
-
-    // Get current messages and filters
-    const messages = window.currentMessages || [];
-    const filters = window.currentFilters || { read: 'all', date: 'all' };
-    const page = window.currentPage || 1;
-
-    // Apply filters
-    const filteredMessages = filterMessages(messages, filters);
-
-    // Render messages
-    if (elements.messagesContainer) {
-        elements.messagesContainer.innerHTML = renderMessagesList(filteredMessages, page, filters);
-    }
-
-    // Render pagination
-    if (elements.pagination) {
-        elements.pagination.innerHTML = renderPagination(filteredMessages.length, page);
-    }
-}
-
-// Bulk action handlers
-async function markSelectedMessagesAsRead() {
-    const selectedMessages = getSelectedMessageIds();
-    if (selectedMessages.length === 0) return;
-    
-    try {
-        const updatePromises = selectedMessages.map(messageId => markMessageAsRead(messageId));
-        await Promise.all(updatePromises);
-        await createDashboard();
-        renderCurrentView();
-        showNotification('Messages marked as read', 'success');
-    } catch (error) {
-        console.error('Error marking messages as read:', error);
-        showNotification('Failed to mark messages as read', 'error');
-    }
-}
-
-async function markSelectedMessagesAsUnread() {
-    const selectedMessages = getSelectedMessageIds();
-    if (selectedMessages.length === 0) return;
-    
-    try {
-        const updatePromises = selectedMessages.map(messageId => markMessageAsUnread(messageId));
-        await Promise.all(updatePromises);
-        await createDashboard();
-        renderCurrentView();
-        showNotification('Messages marked as unread', 'success');
-    } catch (error) {
-        console.error('Error marking messages as unread:', error);
-        showNotification('Failed to mark messages as unread', 'error');
-    }
-}
-
-
-
-// Helper function to get selected message IDs
-function getSelectedMessageIds() {
-    return Array.from(document.querySelectorAll('.msg-checkbox input:checked'))
-        .map(checkbox => checkbox.closest('.msg-item').dataset.messageId);
+    });
 }
 
 // Add to window object
-window.toggleMessageSelection = toggleMessageSelection;
+window.resetSelectionMode = resetSelectionMode;
+
+// Add event listeners when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Add click handler for select all checkbox
+    const selectAllCheckbox = document.querySelector('.select-all-checkbox');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('click', selectAllVisibleMessages);
+    }
+
+    // Add click handlers for individual message checkboxes
+    const messageCheckboxes = document.querySelectorAll('.message-checkbox');
+    messageCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', handleMessageSelect);
+    });
+});
+
+// Add to window object
 window.handleMessageSelect = handleMessageSelect;
 window.selectAllVisibleMessages = selectAllVisibleMessages;
-window.toggleMessageSearch = toggleMessageSearch;
-window.handleMessageSearch = handleMessageSearch;
-window.clearMessageSearch = clearMessageSearch;
-window.toggleMessageFilter = toggleMessageFilter;
-window.applyMessageFilters = applyMessageFilters;
-window.clearMessageFilters = clearMessageFilters;
-window.changePage = changePage;
-window.markSelectedMessagesAsRead = markSelectedMessagesAsRead;
-window.markSelectedMessagesAsUnread = markSelectedMessagesAsUnread;
-window.deleteSelectedMessages = deleteSelectedMessages;
+window.replyAllSelected = replyAllSelected;
 
 // Add styles for message management UI
 const style = document.createElement('style');
@@ -5290,7 +4812,7 @@ style.textContent = `
         background: white;
         cursor: pointer;
     }
-    
+
     .pagination button:hover:not(:disabled) {
         background: #f5f5f5;
     }
@@ -5416,16 +4938,6 @@ document.head.appendChild(style);
 
 
 
-// Helper function to format message body with paragraphs
-function formatMessageBody(text) {
-    return text.split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .map(line => `<p>${line}</p>`)
-        .join('');
-}
-
-
 
 async function getMessagesFromDB() {
     try {
@@ -5466,18 +4978,1135 @@ async function getMessagesFromDB() {
 // Add to window object
 window.toggleMessageRead = toggleMessageRead;
 window.deleteMessage = deleteMessage;
-window.changePage = changePage;
-window.toggleMessageSearch = toggleMessageSearch;
-window.toggleMessageFilter = toggleMessageFilter;
-window.handleMessageSearch = handleMessageSearch;
-window.clearMessageSearch = clearMessageSearch;
-window.applyMessageFilters = applyMessageFilters;
-window.clearMessageFilters = clearMessageFilters;
-window.toggleAllMessages = toggleAllMessages;
 window.markSelectedMessagesAsRead = markSelectedMessagesAsRead;
 window.markSelectedMessagesAsUnread = markSelectedMessagesAsUnread;
-window.deleteSelectedMessages = deleteSelectedMessages;
 window.showMessageDetails = showMessageDetails;
+
+// Function to compose a reply to a message
+async function composeReply(email, isReplyAll, messageId = null) {
+    try {
+        const message = messageId ? currentMessages.find(m => m.id === messageId) : null;
+        const subject = message ? `Re: Message from ${message.name}` : `Re: Conversation`;
+        const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}`;
+        
+        if (message) {
+            // Update the message with reply timestamp
+            const messageRef = doc(db, 'messages', messageId);
+            await updateDoc(messageRef, {
+                repliedAt: serverTimestamp()
+            });
+
+            // Create a reply template with original message context
+            const replyBody = `\n\n-------------------\nOn ${new Date(message.createdAt).toLocaleString()}, ${message.name} wrote:\n${message.message}`;
+            window.location.href = `${mailtoLink}&body=${encodeURIComponent(replyBody)}`;
+
+            // Update UI to show replied status
+            const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageElement) {
+                const repliedInfo = document.createElement('div');
+                repliedInfo.className = 'replied-info';
+                repliedInfo.innerHTML = `<span class="replied-badge">Replied ${formatDate(new Date(), 'MMM D, YYYY h:mm A')}</span>`;
+                
+                // Remove any existing replied-info
+                const existingRepliedInfo = messageElement.querySelector('.replied-info');
+                if (existingRepliedInfo) {
+                    existingRepliedInfo.remove();
+                }
+                
+                // Add the new replied info after message-content
+                const messageContent = messageElement.querySelector('.message-content');
+                if (messageContent) {
+                    messageContent.appendChild(repliedInfo);
+                }
+            }
+        } else {
+            window.location.href = mailtoLink;
+        }
+    } catch (error) {
+        console.error('Error updating reply status:', error);
+        showNotification('Failed to update reply status', 'error');
+    }
+}
+
+// Add to window object
+window.composeReply = composeReply;
+
+// Add handleReply function
+async function handleReply(email, isReplyAll, messageId) {
+    try {
+        // Update the message with reply timestamp
+        const messageRef = doc(db, 'messages', messageId);
+        await updateDoc(messageRef, {
+            repliedAt: serverTimestamp()
+        });
+
+        // Update local state
+        const message = currentMessages.find(m => m.id === messageId);
+        if (message) {
+            message.repliedAt = new Date().toISOString();
+            
+            // Update the UI immediately
+            const replyBadge = document.querySelector(`[data-message-id="${messageId}"]`)
+                .closest('.message-thread-item')
+                .querySelector('.metadata-left .not-replied-badge');
+            if (replyBadge) {
+                replyBadge.className = 'replied-badge';
+                replyBadge.textContent = `Replied ${formatDate(message.repliedAt, 'MMM D, YYYY HH:mm')}`;
+            }
+        }
+
+        // Compose the reply
+        composeReply(email, isReplyAll, messageId);
+    } catch (error) {
+        console.error('Error updating reply status:', error);
+        showNotification('Failed to update reply status', 'error');
+    }
+}
+
+// Add to window object
+window.handleReply = handleReply;
+
+
+function handleConversationSelect(event) {
+    const checkbox = event.target;
+    const email = checkbox.dataset.email;
+    const isChecked = checkbox.checked;
+    
+    // Update all message checkboxes in the conversation
+    const messageCheckboxes = document.querySelectorAll('.message-checkbox');
+    messageCheckboxes.forEach(msgCheckbox => {
+        msgCheckbox.checked = isChecked;
+    });
+    
+    // Update UI to reflect selection
+    const messageItems = document.querySelectorAll('.message-thread-item');
+    messageItems.forEach(item => {
+        item.classList.toggle('selected', isChecked);
+    });
+    
+    updateBulkActionButtons();
+}
+
+// Remove first updateBulkActionButtons function
+// Add to window object
+window.handleConversationSelect = handleConversationSelect;
+
+function toggleConversationSelect(email) {
+    const messageCheckboxes = document.querySelectorAll('.message-select');
+    const selectAllContainer = document.querySelector('.select-all-container');
+    const selectButton = document.querySelector('.message-btn-secondary');
+    const bulkActions = document.querySelector('.bulk-actions');
+    
+    // Early return if required elements don't exist
+    if (!selectButton) return;
+    
+    // Get current selection mode state from the button text
+    const isSelectionMode = selectButton.innerHTML.includes('Cancel Selection');
+    
+    // Toggle message checkboxes
+    messageCheckboxes.forEach(checkbox => {
+        if (checkbox) {
+            checkbox.style.display = !isSelectionMode ? 'block' : 'none';
+        }
+    });
+    
+    // Toggle select all container
+    if (selectAllContainer) {
+        selectAllContainer.style.display = !isSelectionMode ? 'flex' : 'none';
+    }
+    
+    // Update button text and icon
+    selectButton.innerHTML = !isSelectionMode ? 
+        '<i class="fas fa-times"></i> Cancel Selection' : 
+        '<i class="fas fa-check-square"></i> Select Messages';
+    
+    // Reset checkboxes and selection when exiting selection mode
+    if (isSelectionMode) {
+        const selectAllCheckbox = document.getElementById('selectAllMessages');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+        }
+        document.querySelectorAll('.message-checkbox').forEach(cb => {
+            if (cb) cb.checked = false;
+        });
+        document.querySelectorAll('.message-thread-item').forEach(item => {
+            item.classList.remove('selected');
+        });
+        
+        // Hide bulk actions and all its buttons
+        if (bulkActions) {
+            bulkActions.style.display = 'none';
+            const actionButtons = bulkActions.querySelectorAll('button');
+            actionButtons.forEach(button => {
+                button.style.display = 'none';
+            });
+        }
+    }
+}
+
+// Function to handle select all messages
+function handleSelectAllMessages(event) {
+    event.stopPropagation();
+    const isChecked = event.target.checked;
+    document.querySelectorAll('.message-checkbox').forEach(checkbox => {
+        if (checkbox) checkbox.checked = isChecked;
+    });
+    updateBulkActionButtons();
+}
+
+
+
+
+
+function selectAllMessages(event) {
+    const isChecked = event.target.checked;
+    const messageCheckboxes = document.querySelectorAll('.message-checkbox');
+    
+    messageCheckboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+        const messageItem = checkbox.closest('.message-thread-item');
+        if (messageItem) {
+            messageItem.classList.toggle('selected', isChecked);
+        }
+    });
+    
+    updateBulkActionButtons();
+}
+
+// Add to window object
+window.toggleConversationSelect = toggleConversationSelect;
+window.selectAllMessages = selectAllMessages;
+window.resetSelectionMode = resetSelectionMode;
+
+// ... existing code ...
+
+async function deleteSelectedMessages() {
+    const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
+    if (selectedMessages.length === 0) {
+        showNotification('No messages selected', 'error');
+        return;
+    }
+
+    if (!confirm('Are you sure you want to delete the selected messages?')) {
+        return;
+    }
+
+    try {
+        const deletePromises = Array.from(selectedMessages).map(async checkbox => {
+            const messageId = checkbox.dataset.messageId;
+            const messageRef = doc(db, 'messages', messageId);
+            await deleteDoc(messageRef);
+            
+            // Remove from local state
+            currentMessages = currentMessages.filter(msg => msg.id !== messageId);
+            
+            // Remove element from DOM
+            const messageElement = checkbox.closest('.message-thread-item');
+            if (messageElement) {
+                messageElement.remove();
+            }
+        });
+
+        await Promise.all(deletePromises);
+        await createDashboard();
+
+        // If no messages left in conversation, return to messages list
+        const email = selectedMessages[0].dataset.email;
+        const remainingMessages = currentMessages.filter(msg => msg.email === email);
+        if (remainingMessages.length === 0) {
+            await loadMessagesSection();
+        } else {
+            resetSelectionMode();
+        }
+
+        showNotification('Messages deleted successfully', 'success');
+    } catch (error) {
+        console.error('Error deleting messages:', error);
+        showNotification('Failed to delete messages', 'error');
+    }
+}
+
+// Add to window object
+window.deleteSelectedMessages = deleteSelectedMessages;
+
+// Add the missing updateBulkActionState function
+function updateBulkActionState() {
+    const selectedMessages = document.querySelectorAll('.message-item.selected');
+    const bulkActions = document.getElementById('bulkActions');
+    const selectAllCheckbox = document.getElementById('selectAllMessages');
+    
+    if (bulkActions) {
+        if (selectedMessages.length > 0) {
+            bulkActions.classList.remove('hidden');
+            // Update select all checkbox state
+            if (selectAllCheckbox) {
+                const allMessages = document.querySelectorAll('.message-item');
+                selectAllCheckbox.checked = selectedMessages.length === allMessages.length;
+                selectAllCheckbox.indeterminate = selectedMessages.length > 0 && selectedMessages.length < allMessages.length;
+            }
+        } else {
+            bulkActions.classList.add('hidden');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            }
+        }
+    }
+}
+
+
+
+// Update loadMessagesSection to use a single consistent layout
+async function loadMessagesSection() {
+    const messagesSection = document.getElementById('messagesSection');
+    if (!messagesSection) return;
+
+    try {
+        messagesSection.classList.add('loading');
+        
+        // Check authentication first
+        if (!isAdmin()) {
+            throw new Error('Please log in to access messages');
+        }
+        
+        // Create or update the messages list container
+        messagesSection.innerHTML = `
+            <div class="section-header">
+                <h2>Messages</h2>
+                <div class="message-filters">
+                    <div class="search-container">
+                        <input type="text" id="messageSearch" placeholder="Search by name or email..." class="search-input">
+                        <i class="fas fa-search search-icon"></i>
+                    </div>
+                    <select id="messageFilter" class="filter-select">
+                        <option value="all">All Messages</option>
+                        <option value="unread">Unread</option>
+                        <option value="read">Read</option>
+                    </select>
+                    <input type="date" id="dateFilter" class="filter-select" title="Filter by date">
+                    <button id="resetFilters" class="message-btn" onclick="resetFilters()" style="display: none;">
+                        <i class="fas fa-times"></i> Reset Filters
+                    </button>
+                </div>
+            </div>
+            <div id="messageStats" class="stats-container"></div>
+            <div class="bulk-actions" style="display: none;">
+                <button onclick="markSelectedMessagesAsRead()" class="message-btn" data-action="mark-read">
+                    <i class="fas fa-envelope-open"></i> Mark as Read
+                </button>
+                <button onclick="markSelectedMessagesAsUnread()" class="message-btn" data-action="mark-unread">
+                    <i class="fas fa-envelope"></i> Mark as Unread
+                </button>
+                <button onclick="replyAllSelected()" class="message-btn" data-action="reply-all">
+                    <i class="fas fa-reply-all"></i> Reply All
+                </button>
+                <button onclick="deleteSelectedMessages()" class="message-btn delete-button" data-action="delete">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+            <div id="messagesList" class="messages-list">
+                <p class="no-messages">No messages found.</p>
+            </div>
+        `;
+        
+        // Set up realtime listener for messages
+        subscribeToMessages((messages) => {
+            if (Array.isArray(messages)) {
+                // Update current messages in memory
+                window.currentMessages = messages;
+                renderMessagesList(messages);
+                updateMessageStats(messages);
+            }
+        });
+        
+        // Set up realtime listener for dashboard stats
+        subscribeToStats((stats) => {
+            if (stats) {
+                updateDashboardStats(stats);
+            }
+        });
+        
+        initializeMessageListHandlers();
+        initializeSearch();
+        initializeFilters();
+        messagesSection.classList.remove('loading');
+    } catch (error) {
+        console.error('Error loading messages section:', error);
+        showNotification(error.message, 'error');
+        messagesSection.classList.remove('loading');
+    }
+}
+
+// Simplify backToMessages to just reset and reload the messages section
+function backToMessages() {
+    // Reset the current open conversation
+    window.currentOpenConversation = null;
+    
+    // Reset message section state
+    resetMessageSectionState();
+    
+    // Reload messages section
+    loadMessagesSection();
+}
+
+
+
+
+
+// Helper function to toggle message read status
+async function toggleMessageRead(messageId) {
+    try {
+        const messageElement = document.querySelector(`.message-item[data-id="${messageId}"]`);
+        const isCurrentlyRead = messageElement.classList.contains('read');
+        
+        if (isCurrentlyRead) {
+            await markMessageAsUnread(messageId);
+        } else {
+            await markMessageAsRead(messageId);
+        }
+    } catch (error) {
+        console.error('Error toggling message status:', error);
+        showNotification('Failed to update message status', 'error');
+    }
+}
+
+// Add to window object for onclick handlers
+window.toggleMessageRead = toggleMessageRead;
+window.deleteMessage = deleteMessage;
+window.replyAllSelected = replyAllSelected;
+
+// Update the messages list function to restore conversation grouping
+function updateMessagesList(messages) {
+    const messagesList = document.getElementById('messagesList');
+    if (!messagesList) return;
+    
+    // Group messages by email
+    const groupedMessages = messages.reduce((groups, message) => {
+        if (!groups[message.email]) {
+            groups[message.email] = [];
+        }
+        groups[message.email].push(message);
+        return groups;
+    }, {});
+
+    // Sort messages within each group by date and create list items
+    messagesList.innerHTML = Object.keys(groupedMessages).length === 0 ? 
+        '<p class="no-messages">No messages found.</p>' :
+        Object.entries(groupedMessages).map(([email, emailMessages]) => {
+            // Sort messages by date (newest first)
+            emailMessages.sort((a, b) => b.createdAt?.toDate?.() - a.createdAt?.toDate?.());
+            const latestMessage = emailMessages[0];
+            const unreadCount = emailMessages.filter(msg => !msg.read).length;
+            
+            return `
+                <div class="message-thread-item ${unreadCount > 0 ? 'unread' : ''}" 
+                     data-message-id="${latestMessage.id}"
+                     data-email="${email}"
+                     onclick="showMessageDetails('${latestMessage.id}')">
+                    <div class="message-checkbox">
+                        <input type="checkbox" 
+                               class="message-select" 
+                               data-id="${latestMessage.id}"
+                               data-email="${email}"
+                               onclick="event.stopPropagation()">
+                    </div>
+                    <div class="message-content">
+                        <div class="message-header">
+                            <div class="message-info">
+                                <span class="message-name">${latestMessage.name}</span>
+                                ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount} unread</span>` : ''}
+                            </div>
+                            <span class="message-date">${formatDate(latestMessage.createdAt)}</span>
+                        </div>
+                        <div class="message-email">${email} (${emailMessages.length} messages)</div>
+                        <div class="message-preview">${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}</div>
+                    </div>
+                    <div class="message-actions">
+                        <button class="btn-icon" onclick="event.stopPropagation(); toggleConversationRead('${email}')">
+                            <i class="fas ${unreadCount > 0 ? 'fa-envelope' : 'fa-envelope-open'}"></i>
+                        </button>
+                        <button class="btn-icon" onclick="event.stopPropagation(); deleteConversation('${email}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    // Initialize message handlers
+    initializeMessageListHandlers();
+}
+
+// Function to show message details/conversation
+async function showMessageDetails(messageId) {
+    try {
+        const messages = window.currentMessages;
+        const message = messages.find(m => m.id === messageId);
+        if (!message) return;
+
+        const email = message.email;
+        
+        // Store the current email in a global variable to track which conversation is open
+        window.currentOpenConversation = email;
+
+        const conversationMessages = messages.filter(m => m.email === email)
+            .sort((a, b) => b.createdAt?.toDate?.() - a.createdAt?.toDate?.());
+
+        // Get sender details
+        const nameFrequency = {};
+        conversationMessages.forEach(msg => {
+            nameFrequency[msg.name] = (nameFrequency[msg.name] || 0) + 1;
+        });
+        const mostUsedName = Object.entries(nameFrequency)
+            .sort((a, b) => b[1] - a[1])[0][0];
+
+        // Mark all unread messages in this conversation as read
+        const unreadMessages = conversationMessages.filter(msg => !msg.read);
+        if (unreadMessages.length > 0) {
+            try {
+                await Promise.all(unreadMessages.map(msg => markMessageAsRead(msg.id)));
+                unreadMessages.forEach(msg => {
+                    const messageIndex = window.currentMessages.findIndex(m => m.id === msg.id);
+                    if (messageIndex !== -1) {
+                        window.currentMessages[messageIndex].read = true;
+                    }
+                });
+                updateMessagesList(window.currentMessages);
+                updateMessageStats(window.currentMessages);
+            } catch (error) {
+                console.error('Error marking messages as read:', error);
+            }
+        }
+
+        const messagesSection = document.getElementById('messagesSection');
+        messagesSection.innerHTML = `
+            <div class="sender-details">
+                <div class="sender-header">
+                    <button onclick="backToMessages()" class="btn-circle">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <div class="sender-info">
+                        <h3>Sender Details</h3>
+                        <p><strong>Name:</strong> ${mostUsedName}</p>
+                        <p><strong>Email:</strong> ${email}</p>
+                        <p><strong>Total Messages:</strong> ${conversationMessages.length}</p>
+                    </div>
+                </div>
+                <hr class="sender-divider">
+            </div>
+            <div class="section-header">
+                <div class="section-actions">
+                    <button onclick="toggleConversationSelect('${email}')" class="message-btn-secondary message-btn">
+                        <i class="fas fa-check-square"></i> Select Messages
+                    </button>
+                    <div class="select-all-container" style="display: none;">
+                        <input type="checkbox" id="selectAllMessages" class="select-all-checkbox" onchange="selectAllMessages(event)">
+                        <span>Select All (0/0)</span>
+                    </div>
+                    <div class="bulk-actions" style="display: none;">
+                        <button onclick="markSelectedMessagesAsRead()" class="message-btn btn-primary" data-action="mark-read">
+                            <i class="fas fa-envelope-open"></i>
+                        </button>
+                        <button onclick="markSelectedMessagesAsUnread()" class="message-btn btn-info" data-action="mark-unread">
+                            <i class="fas fa-envelope"></i>
+                        </button>
+                        <button onclick="replyAllSelected()" class="message-btn btn-success" data-action="reply-all">
+                            <i class="fas fa-reply-all"></i>
+                        </button>
+                        <button onclick="deleteSelectedMessages()" class="message-btn btn-danger" data-action="delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="messages-timeline">
+                ${conversationMessages.map(msg => `
+                    <div class="message-thread-item ${msg.read ? 'read' : 'unread'}" data-message-id="${msg.id}">
+                        <div class="message-select" style="display: none;">
+                            <input type="checkbox" 
+                                   class="message-checkbox" 
+                                   data-message-id="${msg.id}"
+                                   data-email="${email}"
+                                   data-read="${msg.read}"
+                                   onclick="handleMessageSelect(event)">
+                        </div>
+                        <div class="message-entry">
+                            <div class="message-time">${formatDate(msg.createdAt, 'MMM D, YYYY h:mm A')}</div>
+                            <div class="message-content">
+                                <div class="message-sender">
+                                    From: ${msg.name}
+                                    ${!msg.read ? '<span class="unread-dot"></span>' : ''}
+                                </div>
+                                <div class="message-text">${msg.message}</div>
+                                ${msg.repliedAt ? `
+                                    <div class="replied-info">
+                                        <span class="replied-badge">
+                                            <i class="fas fa-reply"></i> Replied ${formatDate(msg.repliedAt, 'MMM D, YYYY h:mm A')}
+                                        </span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <div class="hover-actions">
+                                <button onclick="composeReply('${email}', false, '${msg.id}')" class="btn-icon" data-action="reply">
+                                    <i class="fas fa-reply"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        // Initialize message handlers
+        initializeMessageListHandlers();
+        
+    } catch (error) {
+        console.error('Error showing message details:', error);
+        showNotification('Failed to load conversation', 'error');
+    }
+}
+
+// Function to handle marking messages as read (all or selected)
+async function markMessagesAsRead(email) {
+    const isSelectionMode = document.querySelector('.select-all-container')?.style.display !== 'none';
+    
+    try {
+        if (isSelectionMode) {
+            // Handle selected messages
+            const selectedCheckboxes = document.querySelectorAll('.message-checkbox:checked, .message-list-checkbox:checked');
+            if (selectedCheckboxes.length === 0) {
+                showNotification('No messages selected', 'error');
+                return;
+            }
+
+            const updatePromises = Array.from(selectedCheckboxes).map(async checkbox => {
+                const messageId = checkbox.dataset.messageId;
+                await markMessageAsRead(messageId);
+            });
+            
+            await Promise.all(updatePromises);
+            showNotification('Selected messages marked as read', 'success');
+        } else {
+            // Handle single message
+            const messageId = document.querySelector('.message-thread-item.selected')?.dataset.messageId;
+            if (!messageId) {
+                showNotification('No message selected', 'error');
+                return;
+            }
+
+            await markMessageAsRead(messageId);
+            showNotification('Message marked as read', 'success');
+        }
+        
+        // Reset state and refresh view
+        resetMessageSectionState();
+        await loadMessagesSection();
+        
+    } catch (error) {
+        console.error('Error marking messages as read:', error);
+        showNotification('Failed to mark messages as read', 'error');
+    }
+}
+
+// Function to handle marking messages as unread (all or selected)
+async function markMessagesAsUnread(email) {
+    const isSelectionMode = document.querySelector('.select-all-container')?.style.display !== 'none';
+    
+    try {
+        if (isSelectionMode) {
+            // Handle selected messages
+            const selectedCheckboxes = document.querySelectorAll('.message-checkbox:checked, .message-list-checkbox:checked');
+            if (selectedCheckboxes.length === 0) {
+                showNotification('No messages selected', 'error');
+                return;
+            }
+
+            const updatePromises = Array.from(selectedCheckboxes).map(async checkbox => {
+                const messageId = checkbox.dataset.messageId;
+                await markMessageAsUnread(messageId);
+            });
+            
+            await Promise.all(updatePromises);
+            showNotification('Selected messages marked as unread', 'success');
+        } else {
+            // Handle all messages in conversation
+            const messages = window.currentMessages.filter(m => m.email === email);
+            if (!messages || messages.length === 0) {
+                showNotification('No messages found', 'error');
+                return;
+            }
+
+            const updatePromises = messages.map(async msg => {
+                if (msg.read) {
+                    await markMessageAsUnread(msg.id);
+                }
+            });
+            
+            await Promise.all(updatePromises);
+            showNotification('All messages marked as unread', 'success');
+        }
+        
+        // Reset state and refresh view
+        resetMessageSectionState();
+        await loadMessagesSection();
+        
+    } catch (error) {
+        console.error('Error marking messages as unread:', error);
+        showNotification('Failed to mark messages as unread', 'error');
+    }
+}
+
+// Function to handle deleting messages (all or selected)
+async function deleteMessages(email) {
+    const isSelectionMode = document.querySelector('.select-all-container')?.style.display !== 'none';
+    const isInConversationView = window.currentOpenConversation !== null;
+    
+    try {
+        if (isSelectionMode) {
+            // Handle selected messages
+            const selectedCheckboxes = document.querySelectorAll('.message-checkbox:checked, .message-list-checkbox:checked');
+            if (selectedCheckboxes.length === 0) {
+                showNotification('No messages selected', 'error');
+                return;
+            }
+
+            if (!confirm('Are you sure you want to delete the selected messages?')) {
+                return;
+            }
+
+            const deletePromises = Array.from(selectedCheckboxes).map(async checkbox => {
+                const messageId = checkbox.dataset.messageId;
+                await deleteDoc(doc(db, 'messages', messageId));
+            });
+            
+            await Promise.all(deletePromises);
+            showNotification('Selected messages deleted', 'success');
+            
+            // Reset selection mode
+            const selectButton = document.querySelector('.message-btn-secondary');
+            if (selectButton && selectButton.innerHTML.includes('Cancel Selection')) {
+                toggleConversationSelect(email);
+            }
+        } else {
+            // Handle all messages in conversation
+            if (!confirm('Are you sure you want to delete all messages in this conversation?')) {
+                return;
+            }
+            
+            const messages = window.currentMessages.filter(m => m.email === email);
+            const deletePromises = messages.map(msg => deleteDoc(doc(db, 'messages', msg.id)));
+            
+            await Promise.all(deletePromises);
+            showNotification('All messages deleted', 'success');
+            
+            // If in conversation view, go back to message list
+            if (isInConversationView) {
+                backToMessages();
+                return;
+            }
+        }
+        
+        // Only reset state and refresh if we're in the message list view
+        if (!isInConversationView) {
+            resetMessageSectionState();
+            await loadMessagesSection();
+        }
+        
+    } catch (error) {
+        console.error('Error deleting messages:', error);
+        showNotification('Failed to delete messages', 'error');
+    }
+}
+
+// Add to window object
+window.markMessagesAsRead = markMessagesAsRead;
+window.markMessagesAsUnread = markMessagesAsUnread;
+window.deleteMessages = deleteMessages;
+
+
+
+// Add to window object
+window.showMessageDetails = showMessageDetails;
+window.backToMessages = backToMessages;
+
+// Initialize search functionality
+function initializeSearch() {
+    const searchInput = document.getElementById('messageSearch');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', debounce(function() {
+        filterMessages();
+    }, 300));
+}
+
+// Initialize filter functionality
+function initializeFilters() {
+    const statusFilter = document.getElementById('messageFilter');
+    const dateFilter = document.getElementById('dateFilter');
+
+    if (statusFilter) {
+        statusFilter.addEventListener('change', filterMessages);
+    }
+    if (dateFilter) {
+        dateFilter.addEventListener('change', filterMessages);
+    }
+}
+
+// Filter messages based on search and filters
+function filterMessages() {
+    const searchTerm = document.getElementById('messageSearch').value.toLowerCase();
+    const statusFilter = document.getElementById('messageFilter').value;
+    const dateFilter = document.getElementById('dateFilter').value;
+
+    // Show/hide reset button based on filter state
+    const resetButton = document.getElementById('resetFilters');
+    if (resetButton) {
+        resetButton.style.display = (searchTerm || statusFilter !== 'all' || dateFilter) ? 'inline-flex' : 'none';
+    }
+
+    const filteredMessages = window.currentMessages.filter(message => {
+        // Search filter
+        const matchesSearch = message.name.toLowerCase().includes(searchTerm) || 
+                            message.message.toLowerCase().includes(searchTerm) ||
+                            message.email.toLowerCase().includes(searchTerm);
+
+        // Status filter
+        const matchesStatus = statusFilter === 'all' || 
+                            (statusFilter === 'unread' && !message.read) ||
+                            (statusFilter === 'read' && message.read);
+
+        // Date filter
+        let matchesDate = true;
+        if (dateFilter) {
+            const messageDate = message.createdAt?.toDate?.() || new Date(message.createdAt);
+            const filterDate = new Date(dateFilter);
+            matchesDate = messageDate.toDateString() === filterDate.toDateString();
+        }
+
+        return matchesSearch && matchesStatus && matchesDate;
+    });
+
+    renderMessagesList(filteredMessages);
+    updateMessageStats(filteredMessages);
+}
+
+// Function to reset all filters
+function resetFilters() {
+    document.getElementById('messageSearch').value = '';
+    document.getElementById('messageFilter').value = 'all';
+    document.getElementById('dateFilter').value = '';
+    
+    renderMessagesList(window.currentMessages);
+    updateMessageStats(window.currentMessages);
+    
+    const resetButton = document.getElementById('resetFilters');
+    if (resetButton) {
+        resetButton.style.display = 'none';
+    }
+}
+
+// Add to window object for onclick handler
+window.resetFilters = resetFilters;
+
+
+
+// Debounce helper function
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+function renderMessagesList(messages) {
+    const messagesList = document.querySelector('.messages-list');
+    if (!messagesList) return;
+
+    if (!messages || messages.length === 0) {
+        messagesList.innerHTML = `
+            <div class="messages-empty">
+                <i class="fas fa-inbox"></i>
+                <p>No messages found</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Group messages by email (conversation)
+    const conversations = messages.reduce((acc, msg) => {
+        if (!acc[msg.email]) {
+            acc[msg.email] = [];
+        }
+        acc[msg.email].push(msg);
+        return acc;
+    }, {});
+
+    // Sort conversations by latest message
+    const sortedConversations = Object.entries(conversations)
+        .map(([email, msgs]) => {
+            const latestMsg = msgs.reduce((latest, msg) => 
+                msg.createdAt > latest.createdAt ? msg : latest
+            );
+            const unreadCount = msgs.filter(msg => !msg.read).length;
+            return {
+                email,
+                name: msgs[0].name,
+                latestMessage: latestMsg,
+                unreadCount,
+                messages: msgs
+            };
+        })
+        .sort((a, b) => b.latestMessage.createdAt - a.latestMessage.createdAt);
+
+    // Create header with selection button and action buttons
+    const headerHtml = `
+        <div class="messages-header">
+            <div class="header-left">
+                <button id="msgSelectToggle" class="message-btn" onclick="toggleMessageSelection()">
+                    <i class="fas fa-check-square"></i> Select Messages
+                </button>
+                <div class="select-all-container" style="display: none;">
+                    <input type="checkbox" id="selectAllMessages" onchange="selectAllMessages(event)">
+                    <span>Select All (0/0)</span>
+                </div>
+            </div>
+            <div id="msgBulkActions" class="bulk-actions" style="display: none;">
+                <button class="message-btn btn-primary" data-action="mark-read" onclick="markSelectedMessagesAsRead()">
+                    <i class="fas fa-envelope-open"></i>
+                </button>
+                <button class="message-btn btn-info" data-action="mark-unread" onclick="markSelectedMessagesAsUnread()">
+                    <i class="fas fa-envelope"></i>
+                </button>
+                <button class="message-btn btn-success" data-action="reply-all" onclick="replyAllSelected()">
+                    <i class="fas fa-reply-all"></i>
+                </button>
+                <button class="message-btn btn-danger" data-action="delete" onclick="deleteSelectedMessages()">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Render conversations
+    const conversationsHtml = sortedConversations.map(conv => {
+        const { email, name, latestMessage, unreadCount, messages } = conv;
+        const isUnread = unreadCount > 0;
+        const messageCount = messages.length;
+        
+        return `
+            <div class="message-list-item ${isUnread ? 'unread' : ''}" 
+                 onclick="showMessageDetails('${latestMessage.id}')"
+                 data-email="${email}">
+                <div class="msg-checkbox" style="display: none;">
+                    <input type="checkbox" 
+                           class="message-checkbox" 
+                           onclick="handleMessageSelect(event)"
+                           data-message-id="${latestMessage.id}"
+                           data-email="${email}">
+                </div>
+                <div class="message-list-content">
+                    <div class="message-list-sender">${name}</div>
+                    <div class="message-list-preview">
+                        ${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}
+                        ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1} messages</span>` : ''}
+                    </div>
+                    <div class="message-list-time">${formatDate(latestMessage.createdAt, 'MMM D, YYYY h:mm A')}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    messagesList.innerHTML = headerHtml + conversationsHtml;
+}
+
+// Toggle message selection mode
+function toggleMessageSelection() {
+    const checkboxContainers = document.querySelectorAll('.msg-checkbox');
+    const bulkActions = document.getElementById('msgBulkActions');
+    const selectToggle = document.getElementById('msgSelectToggle');
+    const selectAllContainer = document.querySelector('.select-all-container');
+    
+    const isSelectionMode = selectToggle.innerHTML.includes('Cancel Selection');
+    
+    checkboxContainers.forEach(container => {
+        container.style.display = isSelectionMode ? 'none' : 'flex';
+        if (container.querySelector('input')) {
+            container.querySelector('input').checked = false;
+        }
+    });
+    
+    if (isSelectionMode) {
+        // Hide all action buttons and containers when canceling selection
+        if (bulkActions) {
+            bulkActions.style.display = 'none';
+        }
+        if (selectAllContainer) {
+            selectAllContainer.style.display = 'none';
+        }
+        if (selectToggle) {
+            selectToggle.innerHTML = '<i class="fas fa-check-square"></i> Select Messages';
+        }
+    } else {
+        if (selectAllContainer) {
+            selectAllContainer.style.display = 'flex';
+        }
+        if (selectToggle) {
+            selectToggle.innerHTML = '<i class="fas fa-times"></i> Cancel Selection';
+            // Initialize selection count
+            if (selectAllContainer) {
+                selectAllContainer.querySelector('span').textContent = 
+                    `Select All (0/${checkboxContainers.length})`;
+            }
+        }
+        // Show bulk actions container but keep buttons hidden initially
+        if (bulkActions) {
+            bulkActions.style.display = 'flex';
+        }
+    }
+    
+    // Reset all selections and update bulk action buttons
+    updateBulkActionButtons();
+}
+
+// Update bulk action buttons based on selection
+function updateBulkActionButtons() {
+    // First check if we're in list view or detail view
+    const bulkActions = document.getElementById('msgBulkActions') || document.querySelector('.bulk-actions');
+    if (!bulkActions) return;
+    
+    const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
+    const totalMessages = document.querySelectorAll('.message-checkbox');
+    const markReadBtn = bulkActions.querySelector('[data-action="mark-read"]');
+    const markUnreadBtn = bulkActions.querySelector('[data-action="mark-unread"]');
+    const replyAllBtn = bulkActions.querySelector('[data-action="reply-all"]');
+    const deleteBtn = bulkActions.querySelector('[data-action="delete"]');
+    
+    // Update selection count
+    const selectAllContainer = document.querySelector('.select-all-container');
+    if (selectAllContainer) {
+        selectAllContainer.querySelector('span').textContent = 
+            `Select All (${selectedMessages.length}/${totalMessages.length})`;
+    }
+    
+    if (selectedMessages.length > 0) {
+        // Show bulk actions container
+        bulkActions.style.display = 'flex';
+        
+        // Check if all selected messages are read/unread
+        const allRead = Array.from(selectedMessages).every(cb => {
+            const messageItem = cb.closest('.message-list-item, .message-thread-item');
+            return !messageItem.classList.contains('unread');
+        });
+        
+        const allUnread = Array.from(selectedMessages).every(cb => {
+            const messageItem = cb.closest('.message-list-item, .message-thread-item');
+            return messageItem.classList.contains('unread');
+        });
+        
+        // Show/hide appropriate buttons
+        if (markReadBtn) {
+            markReadBtn.style.display = allRead ? 'none' : 'inline-flex';
+        }
+        if (markUnreadBtn) {
+            markUnreadBtn.style.display = allUnread ? 'none' : 'inline-flex';
+        }
+        if (replyAllBtn) {
+            replyAllBtn.style.display = 'inline-flex';
+        }
+        if (deleteBtn) {
+            deleteBtn.style.display = 'inline-flex';
+        }
+    } else {
+        // Hide bulk actions container
+        bulkActions.style.display = 'none';
+    }
+}
+
+// Function to reset message section to default state
+function resetMessageSectionState() {
+    const selectAllContainer = document.querySelector('.select-all-container');
+    const messageCheckboxes = document.querySelectorAll('.msg-checkbox, .message-select');
+    const selectButton = document.querySelector('.message-btn-secondary');
+    const bulkActions = document.getElementById('msgBulkActions') || document.querySelector('.bulk-actions');
+    const selectToggle = document.getElementById('msgSelectToggle');
+
+    if (selectAllContainer) {
+        selectAllContainer.style.display = 'none';
+    }
+
+    messageCheckboxes.forEach(checkbox => {
+        checkbox.style.display = 'none';
+    });
+
+    if (selectToggle) {
+        selectToggle.innerHTML = '<i class="fas fa-check-square"></i> Select Messages';
+    }
+
+    // Uncheck all checkboxes
+    document.querySelectorAll('.message-checkbox, .message-select input[type="checkbox"]').forEach(cb => {
+        if (cb) cb.checked = false;
+    });
+
+    // Remove selected class from all messages
+    document.querySelectorAll('.message-list-item, .message-thread-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+
+    // Reset bulk actions
+    if (bulkActions) {
+        bulkActions.style.display = 'none';
+    }
+}
+
+// Add functions to window object
+window.toggleMessageSelection = toggleMessageSelection;
+window.handleMessageSelect = handleMessageSelect;
+window.resetMessageSectionState = resetMessageSectionState;
+window.backToMessages = backToMessages;
+window.selectAllMessages = selectAllMessages;
+
+// Add replyAllSelected function
+async function replyAllSelected() {
+    const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
+    if (selectedMessages.length === 0) {
+        showNotification('No messages selected', 'error');
+        return;
+    }
+
+    try {
+        const updatePromises = Array.from(selectedMessages).map(async checkbox => {
+            const messageId = checkbox.dataset.messageId;
+            const messageRef = doc(db, 'messages', messageId);
+            await updateDoc(messageRef, {
+                repliedAt: serverTimestamp()
+            });
+            
+            // Update local state
+            const message = currentMessages.find(m => m.id === messageId);
+            if (message) {
+                message.repliedAt = new Date().toISOString();
+            }
+        });
+
+        await Promise.all(updatePromises);
+        showNotification('Messages marked as replied successfully', 'success');
+        resetSelectionMode();
+    } catch (error) {
+        console.error('Error marking messages as replied:', error);
+        showNotification('Failed to mark messages as replied', 'error');
+    }
+}
+
+// Add to window object
+window.replyAllSelected = replyAllSelected;
+
+
+
 
 
 

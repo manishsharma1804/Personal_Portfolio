@@ -115,19 +115,10 @@ body {
     background: var(--text-color);
 }
 
-[data-theme="dark"] .about-content {
-    background: var(--box-background);
-    backdrop-filter: blur(10px);
-}
-
 [data-theme="dark"] .about-content .signature-name {
     color: var(--text-color);
 }
 
-[data-theme="dark"] .experience-item {
-    background: var(--box-background);
-    backdrop-filter: blur(10px);
-}
 
 [data-theme="dark"] .experience-toggle {
     color: var(--text-color);
@@ -141,11 +132,6 @@ body {
 [data-theme="dark"] .btn-outline:hover {
     background: var(--text-color);
     color: var(--background-color);
-}
-
-[data-theme="dark"] .widget-card {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(10px);
 }
 
 [data-theme="dark"] .widget-subheading {
@@ -706,7 +692,6 @@ body {
 .about-content {
     margin-top: 1rem;
     padding: 2.5rem;
-    background: #f8f9fa;
     border-radius: 15px;
     position: relative;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
@@ -891,7 +876,6 @@ body {
 }
 
 .experience-item {
-    background: #fff;
     padding: 2rem;
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -1014,6 +998,7 @@ input, textarea {
     border: 1px solid var(--border-color);
     border-radius: 5px;
     font-size: 1rem;
+    margin-bottom: 1rem;  /* Add spacing between form elements */
 }
 
 textarea {
@@ -1255,14 +1240,14 @@ footer p[data-hover]:hover {
     position: relative;
     text-align: center;
     border: 2px solid #ddd;
-    border-radius: 10px;
+    border-radius: 4px;
     padding: 2rem;
 }
 
 .skills-category h3 {
     color: #333;
-    font-size: 1.5rem;
-    font-weight: 600;
+    font-size: 1.2rem;
+    font-weight: 500;
     margin: 0;
     display: inline-block;
     position: absolute;
@@ -1311,8 +1296,7 @@ footer p[data-hover]:hover {
 [data-theme="dark"] .skills-category h3 {
     color: var(--text-color);
     background: var(--dark-gradient);
-    backdrop-filter: blur(10px);
-    border-radius: 20px;
+    border-radius: 8px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1344,7 +1328,6 @@ footer p[data-hover]:hover {
 }
 
 .skill-item {
-    background: #fff;
     padding: 0.8rem;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -1449,7 +1432,6 @@ footer p[data-hover]:hover {
 
 /* Certifications Section */
 .certification-card {
-    background: #fff;
     padding: 1.5rem;
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -1794,18 +1776,6 @@ footer p[data-hover]:hover {
 
 /* Signature Styles */
 @import url('https://fonts.cdnfonts.com/css/the-chairman');
-
-.about-content {
-    margin-top: 1rem;
-    padding: 2.5rem;
-    background: #f8f9fa;
-    border-radius: 15px;
-    position: relative;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-    display: flex;
-    flex-direction: column;
-}
-
 .about-content .signature-container {
     display: flex;
     flex-direction: column;
@@ -1885,7 +1855,6 @@ footer p[data-hover]:hover {
 }
 
 .widget-card {
-    background: white;
     padding: 1.5rem;
     border-radius: 10px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -2292,23 +2261,11 @@ body.loading {
 [data-theme="dark"] .skills-category {
     border: 2px solid rgba(255, 255, 255, 0.1);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
     position: relative;
     margin-bottom: 3rem;
     padding: 2rem;
 }
 
-[data-theme="dark"] .skills-category h3 {
-    color: var(--text-color);
-    background: linear-gradient(120deg, #1a1a1a, #2c3e50);
-    backdrop-filter: blur(10px);
-    border-radius: 20px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: calc(100% - 4rem);
-}
 
 [data-theme="dark"] .skills-category:nth-child(6n+1) h3 {
     left: 2rem;
@@ -2338,11 +2295,6 @@ body.loading {
 [data-theme="dark"] .skills-category:nth-child(6n+6) h3 {
     right: 2rem;
     transform: translateY(-50%);
-}
-
-[data-theme="dark"] .skill-item {
-    background: var(--box-background);
-    backdrop-filter: blur(10px);
 }
 
 [data-theme="dark"] .skill-info h4 {
@@ -2402,10 +2354,6 @@ body.loading {
     opacity: 0.7;
 }
 
-[data-theme="dark"] .about-content {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(10px);
-} 
 
 @media (max-width: 768px) {
     [data-theme="dark"] .skills-category h3 {
@@ -2427,10 +2375,9 @@ body.loading {
 
 [data-theme="dark"] input,
 [data-theme="dark"] textarea {
-    background: rgba(255, 255, 255, 0.04);
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: #fff;
-    backdrop-filter: blur(10px);
 }
 
 [data-theme="dark"] input:focus,
@@ -2585,8 +2532,6 @@ body.loading {
 } 
 
 [data-theme="dark"] .certification-card {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }

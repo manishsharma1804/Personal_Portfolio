@@ -7,7 +7,7 @@ import {
     loadSkills,
     loadPublicProfileData 
 } from './firebase-config.js';
-import { getFirestore, doc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, collection, addDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 const db = getFirestore();
 
 // Function to hide empty sections
@@ -169,155 +169,283 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     });
 });
 
-// Function to get random sending message
-function getRandomSendingMessage() {
-    const messages = [
-        '<i class="fas fa-paper-plane fa-spin"></i> Sending your message...',
-        '<i class="fas fa-spinner fa-spin"></i> Connecting...',
-        '<i class="fas fa-circle-notch fa-spin"></i> Just a moment...',
-        '<i class="fas fa-sync fa-spin"></i> Processing...',
-        '<i class="fas fa-envelope fa-spin"></i> Delivering...',
-        '<i class="fas fa-clock fa-spin"></i> Almost there...',
-        '<i class="fas fa-satellite-dish fa-spin"></i> Transmitting...',
-        '<i class="fas fa-broadcast-tower fa-spin"></i> Broadcasting...'
-    ];
-    return messages[Math.floor(Math.random() * messages.length)];
+// Track last shown messages
+let lastSuccessMessage = '';
+let lastErrorMessage = '';
+let lastSendingMessage = '';
+
+// Function to validate email format
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
 }
 
-// Track secret admin access
-let adminAccessCounter = 0;
-let lastClickTime = Date.now();
-const RESET_TIMEOUT = 10000; // Reset counter after 10 seconds of inactivity
-
-// Function to check admin access
-function checkAdminAccess(message) {
-    const currentTime = Date.now();
-    if (currentTime - lastClickTime > RESET_TIMEOUT) {
-        adminAccessCounter = 0;
+// Function to get first name excluding titles
+function getFirstName(fullName) {
+    // List of common titles to exclude
+    const titles = ['mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'sir', 'madam', 'md'];
+    
+    // Split the name and convert to lowercase for comparison
+    let nameParts = fullName.trim().split(' ');
+    
+    // Remove titles from the beginning
+    while (nameParts.length > 0 && titles.includes(nameParts[0].toLowerCase())) {
+        nameParts.shift();
     }
-    lastClickTime = currentTime;
+    
+    // Return first name if exists, otherwise return full name
+    return nameParts[0] || fullName;
+}
 
-    if (message.toLowerCase() === 'hello! its admin') {
-        adminAccessCounter++;
-        if (adminAccessCounter === 5) {
-            return true;
-        }
-    } else {
-        adminAccessCounter = 0;
-    }
-    return false;
+// Function to get random success message
+function getRandomSuccessMessage(name) {
+    const messages = [
+        `Hey ${name}, thanks for contacting me! I'll get in touch with you shortly...`,
+        `Thanks for reaching out, ${name}! I'll respond to your message soon...`,
+        `Got your message, ${name}! I'll get back to you as soon as possible...`,
+        `Thanks ${name}! I appreciate you getting in touch and will respond shortly...`,
+        `Message received, ${name}! Looking forward to connecting with you soon...`,
+        `Perfect timing, ${name}! I'll review your message and get back to you...`,
+        `Thanks for dropping a line, ${name}! I'll respond as soon as I can...`,
+        `Hey ${name}! Your message is in good hands. I'll get back to you soon...`,
+        `Great to hear from you, ${name}! Expect my response shortly...`,
+        `Message successfully landed, ${name}! I'll be in touch soon...`,
+        `Thanks for writing, ${name}! I'll make sure to respond promptly...`,
+        `Hi ${name}! Your message is important to me. I'll respond soon...`,
+        `Message secured, ${name}! Looking forward to our conversation...`,
+        `Awesome, ${name}! I'll review your message and respond shortly...`,
+        `Thanks for reaching out ${name}! I'll get back to you with lightning speed ⚡`,
+        `Message received and noted, ${name}! Expect my response soon...`,
+        `Hey ${name}! Your message just made my day. I'll respond shortly...`,
+        `Thanks for connecting, ${name}! I'll be in touch before you know it...`
+    ];
+    
+    // Filter out the last shown message
+    const availableMessages = messages.filter(msg => msg !== lastSuccessMessage);
+    // Get random message from remaining ones
+    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
+    // Update last shown message
+    lastSuccessMessage = message;
+    return message;
+}
+
+// Function to get random error message for rate limiting
+function getRandomErrorMessage(name, timeLeft) {
+    const messages = [
+        `Whoa ${name}! Looks like someone's been busy - either you or someone using your IP. Take a ${timeLeft} breather...`,
+        `${name}, you're quite the enthusiast! But let's wait ${timeLeft} - my inbox needs to catch its breath...`,
+        `Plot twist, ${name}! Someone with your IP already sent messages. Next episode in ${timeLeft}...`,
+        `${name}, you're breaking records here! But let's pause for ${timeLeft} - even superheroes need rest...`,
+        `Impressive dedication, ${name}! But we've hit the limit. Grab a coffee and come back in ${timeLeft}...`,
+        `${name}, either you're really eager or your IP is popular! Either way, let's reconnect in ${timeLeft}...`,
+        `Hold that thought, ${name}! Your IP address has been quite chatty. Next chat window opens in ${timeLeft}...`,
+        `${name}, you've unlocked the 'Super Active User' badge! Cooldown period: ${timeLeft}...`,
+        `Breaking news, ${name}! Your IP hit the message limit. Next available slot: ${timeLeft}...`,
+        `${name}, you're too fast for your own IP! Take a ${timeLeft} break - maybe do some yoga?`,
+        `Detected: Enthusiastic messaging! ${name}, let's continue this lovely conversation in ${timeLeft}...`,
+        `${name}, your IP is quite the social butterfly! Time for a quick ${timeLeft} breather...`,
+        `Message limit reached! ${name}, I admire your enthusiasm, but let's wait ${timeLeft}...`,
+        `${name}, you or your IP twin has been quite active! Next window of opportunity: ${timeLeft}...`,
+        `Slow down, speed racer ${name}! Your IP needs a ${timeLeft} pit stop...`
+    ];
+    
+    // Filter out the last shown message
+    const availableMessages = messages.filter(msg => msg !== lastErrorMessage);
+    // Get random message from remaining ones
+    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
+    // Update last shown message
+    lastErrorMessage = message;
+    return message;
+}
+
+// Function to get random generic error message
+function getRandomGenericErrorMessage() {
+    const messages = [
+        "Looks like the internet is playing hide and seek! Check your connection and try again...",
+        "The internet gremlins are at it again! Please check your connection...",
+        "Your message got lost in the digital void. Quick connection check?",
+        "Error 404: Internet not found! Time to check that connection...",
+        "The digital carrier pigeons are confused. Maybe check your internet?",
+        "Your bits and bytes took a wrong turn. Let's check that connection...",
+        "The internet hamsters need a reboot! Please verify your connection...",
+        "Your message tried to swim the internet, but got tired. Connection check?",
+        "The cyber highway is experiencing traffic. Check your internet route...",
+        "Your packets got lost in cyberspace! Time for a connection check...",
+        "The internet tubes are clogged! Let's check that connection...",
+        "Your message hit a digital pothole. Quick internet check?",
+        "The web weaver is napping. Maybe check your connection?",
+        "Your data took a coffee break. Time to check the internet...",
+        "Message delivery service is doing jumping jacks. Connection check?"
+    ];
+    
+    // Filter out the last shown message
+    const availableMessages = messages.filter(msg => msg !== lastErrorMessage);
+    // Get random message from remaining ones
+    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
+    // Update last shown message
+    lastErrorMessage = message;
+    return message;
 }
 
 // Function to handle contact form submission
 async function handleContactSubmit(event) {
     event.preventDefault();
-    
-    const form = event.target;
-    const nameInput = form.querySelector('#contactName');
-    const emailInput = form.querySelector('#contactEmail');
-    const messageInput = form.querySelector('#contactMessage');
-    const submitButton = form.querySelector('button[type="submit"]');
-    
-    // Check if all form elements exist
-    if (!nameInput || !emailInput || !messageInput || !submitButton) {
-        console.error('Form elements not found');
-        showNotification('Form error: Required fields not found', 'error');
-        return;
-    }
-
-    const message = messageInput.value.trim();
-    
-    // Check for admin access without validation
-    if (message.toLowerCase() === 'hello! its admin') {
-        // Blur any focused input to hide mobile keyboard
-        document.activeElement.blur();
-        
-        if (checkAdminAccess(message)) {
-            activateSecretCode();
-            return;
-        }
-        // Don't show validation error for admin attempts
-        return;
-    }
-    
-    const originalButtonText = submitButton.innerHTML;
+    let form = event.target;
+    let submitButton = form.querySelector('button[type="submit"]');
+    let originalButtonText = submitButton?.innerHTML || '';
+    let useFirebaseTracking = true;  // Flag to track if Firebase is accessible
     
     try {
-        // Validate form data first
-        const name = nameInput.value.trim();
-        const email = emailInput.value.trim();
+        const nameInput = form.querySelector('#contactName');
+        const emailInput = form.querySelector('#contactEmail');
+        const messageInput = form.querySelector('#contactMessage');
         
-        if (!name || !email || !message) {
-            throw new Error('Please fill in all fields');
-        }
-        
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            throw new Error('Please enter a valid email address');
+        // Check if all form elements exist
+        if (!nameInput || !emailInput || !messageInput || !submitButton) {
+            console.error('Form elements not found');
+            showNotification(getRandomGenericErrorMessage(), 'error');
+            return;
         }
 
-        // Disable submit button and show random loading state with transition
-        submitButton.disabled = true;
-        submitButton.style.transition = 'opacity 0.3s ease';
-        submitButton.style.opacity = '0';
+        // Get form values
+        const name = nameInput.value.trim();
+        const firstName = getFirstName(name);  // Get first name early for messages
+        const email = emailInput.value.trim();
+        const messageText = messageInput.value.trim();
         
-        // Wait for fade out
-        await new Promise(resolve => setTimeout(resolve, 300));
-        submitButton.innerHTML = getRandomSendingMessage();
-        submitButton.style.opacity = '1';
-        
-        // Minimum display time for the sending message
-        const sendingStartTime = Date.now();
-        
-        // Create message document
-        const messageData = {
-            name,
-            email,
-            message,
-            createdAt: new Date().toISOString()
-        };
-        
-        // Add to Firebase
-        const messagesRef = collection(db, 'messages');
-        await addDoc(messagesRef, messageData);
-        
-        // Ensure sending message shows for at least 1.5 seconds
-        const elapsedTime = Date.now() - sendingStartTime;
-        if (elapsedTime < 1500) {
-            await new Promise(resolve => setTimeout(resolve, 1500 - elapsedTime));
+        // Form validation
+        if (!name || !email || !messageText) {
+            showNotification('Please fill in all fields', 'error');
+            return;
         }
         
-        // Get first name or appropriate title
-        const nameParts = name.split(' ');
-        let displayName = name;
-        if (nameParts.length > 1) {
-            const firstPart = nameParts[0].toUpperCase();
-            if (['MR', 'DR', 'MS', 'MRS', 'PROF'].includes(firstPart)) {
-                displayName = nameParts[1];
-            } else {
-                displayName = nameParts[0];
+        if (!isValidEmail(email)) {
+            showNotification('Please enter a valid email address', 'error');
+            return;
+        }
+
+        // Get user's IP address
+        const ipResponse = await fetch('https://api.ipify.org?format=json');
+        const ipData = await ipResponse.json();
+        const userIP = ipData.ip;
+        
+        // Get message history from device
+        const deviceMessages = JSON.parse(localStorage.getItem('messageHistory') || '[]');
+        
+        // Check 5-minute limit (2 messages)
+        const recentMessages = deviceMessages.filter(timestamp => 
+            Date.now() - timestamp < 5 * 60 * 1000 // Last 5 minutes
+        );
+        
+        // Check 24-hour limit (5 messages)
+        const dailyMessages = deviceMessages.filter(timestamp => 
+            Date.now() - timestamp < 24 * 60 * 60 * 1000 // Last 24 hours
+        );
+
+        let ipHistory = [];
+        let recentIPMessages = [];
+        let dailyIPMessages = [];
+        
+        try {
+            // Try to get IP-based limits from Firebase
+            const ipRef = doc(db, 'messageTracking', userIP);
+            const ipDoc = await getDoc(ipRef);
+            ipHistory = ipDoc.exists() ? ipDoc.data().messages || [] : [];
+            
+            recentIPMessages = ipHistory.filter(timestamp => 
+                Date.now() - timestamp < 5 * 60 * 1000 // Last 5 minutes
+            );
+            
+            dailyIPMessages = ipHistory.filter(timestamp => 
+                Date.now() - timestamp < 24 * 60 * 60 * 1000 // Last 24 hours
+            );
+        } catch (firebaseError) {
+            console.warn('Firebase tracking unavailable:', firebaseError);
+            useFirebaseTracking = false;
+        }
+        
+        // Check 5-minute limit
+        if (recentMessages.length >= 2 || (useFirebaseTracking && recentIPMessages.length >= 2)) {
+            const deviceTimeUntilReset = recentMessages.length > 0 ? 
+                5 * 60 * 1000 - (Date.now() - recentMessages[0]) : 0;
+            const ipTimeUntilReset = useFirebaseTracking && recentIPMessages.length > 0 ? 
+                5 * 60 * 1000 - (Date.now() - recentIPMessages[0]) : 0;
+            const timeUntilReset = Math.max(deviceTimeUntilReset, ipTimeUntilReset);
+            const minutesLeft = Math.ceil(timeUntilReset / (60 * 1000));
+            const timeDisplay = `${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}`;
+            showNotification(getRandomErrorMessage(firstName, timeDisplay), 'error');
+            return;
+        }
+        
+        // Check 24-hour limit
+        if (dailyMessages.length >= 5 || (useFirebaseTracking && dailyIPMessages.length >= 5)) {
+            const deviceTimeUntilReset = dailyMessages.length > 0 ? 
+                24 * 60 * 60 * 1000 - (Date.now() - dailyMessages[0]) : 0;
+            const ipTimeUntilReset = useFirebaseTracking && dailyIPMessages.length > 0 ? 
+                24 * 60 * 60 * 1000 - (Date.now() - dailyIPMessages[0]) : 0;
+            const timeUntilReset = Math.max(deviceTimeUntilReset, ipTimeUntilReset);
+            const hoursLeft = Math.ceil(timeUntilReset / (60 * 60 * 1000));
+            const timeDisplay = `${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`;
+            showNotification(getRandomErrorMessage(firstName, timeDisplay), 'error');
+            return;
+        }
+
+        // Admin check
+        if (messageText.toLowerCase() === 'hello! its admin') {
+            document.activeElement.blur();
+            if (checkAdminAccess(messageText)) {
+                activateSecretCode();
+                return;
+            }
+            return;
+        }
+
+        // Show sending animation
+        submitButton.innerHTML = getRandomSendingMessage();
+        submitButton.disabled = true;
+
+        // Create message object
+        const messageData = {
+            name: name,
+            email: email,
+            message: messageText,
+            timestamp: Date.now(),
+            ip: userIP
+        };
+
+        // Save the message
+        await saveContactMessage(messageData);
+        
+        // Update device tracking
+        deviceMessages.push(Date.now());
+        localStorage.setItem('messageHistory', JSON.stringify(deviceMessages));
+        
+        // Update Firebase tracking if available
+        if (useFirebaseTracking) {
+            try {
+                ipHistory.push(Date.now());
+                await setDoc(doc(db, 'messageTracking', userIP), { messages: ipHistory }, { merge: true });
+            } catch (firebaseError) {
+                console.warn('Failed to update Firebase tracking:', firebaseError);
             }
         }
         
-        // Show success message
-        showNotification(`Thank you, ${displayName}! I will contact you shortly.`, 'success');
-        
-        // Reset form
+        // Clear form
         form.reset();
         
+        // Show personalized success message
+        showNotification(getRandomSuccessMessage(firstName), 'success');
     } catch (error) {
         console.error('Error sending message:', error);
-        showNotification(error.message || 'Failed to send message. Please try again.', 'error');
-        
+        // Use personalized message if we have the name, otherwise use generic
+        const errorMessage = name 
+            ? `Oops! Sorry ${firstName}, something went wrong. Please try again...`
+            : getRandomGenericErrorMessage();
+        showNotification(errorMessage, 'error');
     } finally {
-        // Restore submit button state with transition
         if (submitButton) {
-            submitButton.style.opacity = '0';
-            await new Promise(resolve => setTimeout(resolve, 300));
             submitButton.innerHTML = originalButtonText;
             submitButton.disabled = false;
-            submitButton.style.opacity = '1';
         }
     }
 }
@@ -331,6 +459,13 @@ if (contactForm) {
 
 // Function to show notification
 function showNotification(message, type = 'success') {
+    // Remove any existing notifications first
+    const existingNotifications = document.querySelectorAll('.notification');
+    existingNotifications.forEach(notification => {
+        notification.classList.remove('show');
+        setTimeout(() => notification.remove(), 300);
+    });
+
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.innerHTML = `
@@ -345,11 +480,12 @@ function showNotification(message, type = 'success') {
     // Trigger animation
     setTimeout(() => notification.classList.add('show'), 100);
     
-    // Remove notification after delay
+    // Remove notification after delay - 6s for success, 7s for error
+    const displayDuration = type === 'success' ? 6000 : 7000;
     setTimeout(() => {
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 300);
-    }, 3000);
+    }, displayDuration);
 }
 
 // Dynamic content loading from Firebase
@@ -1311,3 +1447,27 @@ document.addEventListener('keydown', async function(event) {
         window.location.href = 'admin.html';
     }
 }); 
+
+// Function to get random sending message
+function getRandomSendingMessage() {
+    const messages = [
+        '<i class="fas fa-paper-plane fa-spin"></i> Sending your message...',
+        '<i class="fas fa-spinner fa-spin"></i> Almost there...',
+        '<i class="fas fa-circle-notch fa-spin"></i> Processing your message...',
+        '<i class="fas fa-sync fa-spin"></i> Delivering your message...',
+        '<i class="fas fa-envelope fa-spin"></i> Sending...',
+        '<i class="fas fa-clock fa-spin"></i> Just a moment...',
+        '<i class="fas fa-satellite-dish fa-spin"></i> Transmitting...',
+        '<i class="fas fa-broadcast-tower fa-spin"></i> Broadcasting...',
+        '<i class="fas fa-dove fa-spin"></i> Message in flight...',
+        '<i class="fas fa-paper-plane fa-spin"></i> On its way...'
+    ];
+    
+    // Filter out the last shown message
+    const availableMessages = messages.filter(msg => msg !== lastSendingMessage);
+    // Get random message from remaining ones
+    const message = availableMessages[Math.floor(Math.random() * availableMessages.length)];
+    // Update last shown message
+    lastSendingMessage = message;
+    return message;
+} 
