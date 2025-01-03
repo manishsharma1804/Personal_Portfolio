@@ -590,6 +590,101 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
+// Function to group and display experiences
+async function displayExperiences(experiences) {
+    const experienceContent = document.getElementById('experienceContent');
+    if (!experienceContent) return;
+
+    // Group experiences by company (case-insensitive)
+    const experiencesByCompany = {};
+    experiences.forEach(exp => {
+        const companyKey = exp.company.toLowerCase().trim();
+        if (!experiencesByCompany[companyKey]) {
+            experiencesByCompany[companyKey] = {
+                displayName: exp.company,
+                experiences: []
+            };
+        }
+        experiencesByCompany[companyKey].experiences.push(exp);
+    });
+
+    // Sort experiences within each company by date (most recent first)
+    Object.values(experiencesByCompany).forEach(company => {
+        company.experiences.sort((a, b) => {
+            const dateA = a.endDate === 'Present' ? new Date() : new Date(a.endDate);
+            const dateB = b.endDate === 'Present' ? new Date() : new Date(b.endDate);
+            return dateB - dateA;
+        });
+    });
+
+    // Create DOM elements for each company and its experiences
+    experienceContent.innerHTML = '';
+    Object.values(experiencesByCompany).forEach(({displayName, experiences}) => {
+        const companyContainer = document.createElement('div');
+        companyContainer.className = 'experience-item';
+
+        if (experiences.length === 1) {
+            // Single role at company - show traditional format
+            const exp = experiences[0];
+            companyContainer.innerHTML = `
+                <div class="experience-header">
+                    <h3>${exp.title}</h3>
+                </div>
+                <p class="company">${displayName}</p>
+                <p class="period">${exp.period}</p>
+                <div class="description" style="display: none;">${exp.description}</div>
+                <button class="view-details-btn" onclick="this.previousElementSibling.style.display = this.previousElementSibling.style.display === 'none' ? 'block' : 'none'; this.textContent = this.previousElementSibling.style.display === 'none' ? 'View Details' : 'Hide Details'">View Details</button>
+            `;
+        } else {
+            // Multiple roles at company - show hierarchical format
+            const rolesHtml = experiences.map((exp, index) => `
+                <div class="role-item" style="${index > 0 ? 'display: none;' : ''}" data-role-index="${index}">
+                    <div class="role-header">
+                        <h4>${exp.title}</h4>
+                    </div>
+                    <p class="period">${exp.period}</p>
+                    <div class="description" style="display: none;">${exp.description}</div>
+                    <button class="view-details-btn" onclick="this.previousElementSibling.style.display = this.previousElementSibling.style.display === 'none' ? 'block' : 'none'; this.textContent = this.previousElementSibling.style.display === 'none' ? 'View Details' : 'Hide Details'">View Details</button>
+                </div>
+            `).join('');
+
+            companyContainer.innerHTML = `
+                <div class="experience-header">
+                    <h3>${displayName}</h3>
+                </div>
+                <div class="roles-container">
+                    ${rolesHtml}
+                    ${experiences.length > 1 ? `
+                        <button class="view-more-roles-btn" onclick="toggleRoles(this)" data-expanded="false">
+                            <i class="fas fa-chevron-down"></i> View More Roles (${experiences.length - 1} more)
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        }
+        experienceContent.appendChild(companyContainer);
+    });
+}
+
+// Function to toggle roles visibility
+window.toggleRoles = function(button) {
+    const rolesContainer = button.parentElement;
+    const roles = rolesContainer.querySelectorAll('.role-item');
+    const isExpanded = button.getAttribute('data-expanded') === 'true';
+    
+    roles.forEach((role, index) => {
+        if (index > 0) { // Skip the first role as it's always visible
+            role.style.display = isExpanded ? 'none' : 'block';
+        }
+    });
+    
+    button.innerHTML = `
+        <i class="fas fa-chevron-${isExpanded ? 'down' : 'up'}"></i>
+        ${isExpanded ? `View More Roles (${roles.length - 1} more)` : 'Show Less'}
+    `;
+    button.setAttribute('data-expanded', isExpanded ? 'false' : 'true');
+};
+
 // Dynamic content loading from Firebase
 async function loadContent() {
     try {
@@ -835,46 +930,13 @@ async function loadContent() {
             }
         }
 
-        // Load Experience content
-        const experienceContent = document.getElementById('experienceContent');
-        if (experienceContent) {
-            try {
-                const experiences = await loadExperienceContent();
-                if (experiences && experiences.length > 0) {
-                    experienceContent.innerHTML = experiences.map((exp, index) => `
-                        <div class="experience-item" style="${index >= 4 ? 'display: none;' : ''}">
-                            <div class="experience-header">
-                                <div class="experience-header-content">
-                                    <h3>${exp.title}</h3>
-                                    <div class="company">
-                                        <i class="fas fa-building"></i>
-                                        ${exp.company}
-                                    </div>
-                                    <div class="period">
-                                        <i class="fas fa-calendar-alt"></i>
-                                        ${exp.period}
-                                    </div>
-                                </div>
-                                <button class="experience-toggle" onclick="toggleDescription(this)" aria-expanded="false">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                            </div>
-                            <div class="experience-description">
-                                ${exp.description}
-                            </div>
-                        </div>
-                    `).join('');
-                    if (experiences.length > 4) {
-                        addViewMoreButton('experienceContent');
-                    }
-                    showSection('experience');
-                } else {
-                    hideEmptySection('experience');
-                }
-            } catch (error) {
-                console.warn('Error loading experience content:', error);
-                hideEmptySection('experience');
-            }
+        // Load experiences
+        const experiences = await loadExperienceContent();
+        if (experiences && experiences.length > 0) {
+            await displayExperiences(experiences);
+            showSection('experience');
+        } else {
+            hideEmptySection('experience');
         }
 
         // Load Projects
@@ -1071,7 +1133,8 @@ async function loadContent() {
             }
         }
     } catch (error) {
-        console.warn('Error in loadContent:', error);
+        console.error('Error loading content:', error);
+        showNotification('Failed to load content. Please try again later.', 'error');
     }
 }
 

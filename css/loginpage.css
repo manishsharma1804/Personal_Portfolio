@@ -174,7 +174,6 @@
         border-radius: 8px;
         cursor: pointer;
         transition: all 0.3s ease;
-        width: 100%;
     }
 
     .btn.primary:hover {

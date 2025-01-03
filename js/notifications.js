@@ -124,33 +124,65 @@ function updateNotificationBadge() {
     }
 }
 
+// Function to get random empty notification message
+function getRandomEmptyMessage() {
+    const messages = [
+        { emoji: '🦗', text: 'Crickets chirping... No messages yet!' },
+        { emoji: '🌵', text: 'It\'s quiet here... Desert quiet!' },
+        { emoji: '🕊️', text: 'Your inbox is as peaceful as a dove' },
+        { emoji: '📭', text: 'Your inbox is taking a power nap' },
+        { emoji: '🎵', text: 'No messages, no problems!' },
+        { emoji: '🐢', text: 'Slower than a turtle... No messages today' },
+        { emoji: '🌚', text: 'Dark side of the moon... No messages found' },
+        { emoji: '🧘', text: 'Zen mode: Zero notifications' },
+        { emoji: '🎪', text: 'Empty circus... No messages to show' },
+        { emoji: '🌴', text: 'Vacation mode: Inbox is empty!' }
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
+}
+
 // Function to update notification dropdown
 function updateNotificationDropdown() {
     const notificationList = document.querySelector('.notification-list');
     if (!notificationList) return;
     
     if (!currentNotifications || currentNotifications.length === 0) {
+        const emptyMessage = getRandomEmptyMessage();
         notificationList.innerHTML = `
-            <div class="notification-item" style="text-align: center;">
-                <p>No new notifications</p>
+            <div class="notification-empty">
+                <div class="empty-emoji bounce">${emptyMessage.emoji}</div>
+                <p class="empty-text fade-in">${emptyMessage.text}</p>
             </div>
         `;
         return;
     }
 
-    notificationList.innerHTML = currentNotifications.map(group => `
+    // Get all notifications sorted by date
+    const sortedNotifications = [...currentNotifications].sort((a, b) => 
+        new Date(b.latest.createdAt) - new Date(a.latest.createdAt)
+    );
+
+    // Filter out viewed notifications and get next unviewed ones
+    const unviewedNotifications = sortedNotifications.filter(group => !group.latest.read);
+    
+    // Take max 5 unviewed notifications
+    const notificationsToShow = unviewedNotifications.slice(0, 5);
+
+    notificationList.innerHTML = notificationsToShow.map(group => `
         <div class="notification-item unread" onclick="showMessages('${group.latest.email}')">
             <div class="notification-icon">
                 <i class="fas fa-envelope"></i>
             </div>
             <div class="notification-content">
-                <div class="notification-title">${group.latest.name}</div>
+                <div class="notification-header-line">
+                    <span class="notification-name">${group.latest.name.split(' ')[0]}</span>
+                    <span class="notification-time">${formatNotificationTime(group.latest.createdAt)}</span>
+                </div>
                 <div class="notification-message">
                     ${group.count > 1 
-                        ? `Sent you ${group.count} new messages` 
+                        ? `Sent you ${group.count} messages` 
                         : group.latest.message.substring(0, 50) + (group.latest.message.length > 50 ? '...' : '')}
                 </div>
-                <div class="notification-time">${formatNotificationTime(group.latest.createdAt)}</div>
             </div>
         </div>
     `).join('');

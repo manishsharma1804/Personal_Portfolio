@@ -348,8 +348,12 @@ async function saveExperience(event) {
     }
     
     try {
-        const title = document.getElementById('experienceTitle').value;
-        const company = document.getElementById('experienceCompany').value;
+        const title = document.getElementById('experienceTitle').value.trim();
+        const company = document.getElementById('experienceCompany').value.trim();
+        // Format company name - capitalize first letter of each word
+        const formattedCompany = company.split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
         const description = document.getElementById('experienceDescriptionEditor').innerHTML;
         const startDate = document.getElementById('experienceStart').value;
         const isCurrent = document.getElementById('experienceCurrent').checked;
@@ -366,7 +370,7 @@ async function saveExperience(event) {
         
         const experienceData = {
             title,
-            company,
+            company: formattedCompany, // Use formatted company name
             description,
             period,
             startDate: formattedStartDate,
@@ -1987,13 +1991,10 @@ async function loadAboutSection() {
     const readView = document.createElement('div');
     readView.className = 'read-view';
     readView.innerHTML = `
-        <div class="section-header">
-            <h2>About Me</h2>
-            <button onclick="enableEditMode('about')" class="btn-icon" title="Edit About">
+        <div class="section-content">
+        <button onclick="enableEditMode('about')" class="btn-editt" title="Edit About">
                 <i class="fas fa-edit"></i>
             </button>
-        </div>
-        <div class="section-content">
             <div class="about-content">
                 <div class="about-text">${content?.bio || 'No bio available'}</div>
             </div>
@@ -2564,31 +2565,91 @@ async function loadExperienceSection() {
             experienceList.innerHTML = '<p class="text-muted">No experiences added yet.</p>';
             return;
         }
-        
-        currentExperiences.forEach((experience, index) => {
-            const experienceItem = document.createElement('div');
-            experienceItem.className = 'experience-item';
-            experienceItem.innerHTML = `
-                <div class="experience-header">
-                    <div class="title-section">
-                        <h3>${experience.title}</h3>
-                        <button onclick="showExperienceInfo('${index}')" class="btn-icon info-icon" title="View Details">
-                            <i class="fas fa-info-circle"></i>
-                        </button>
+
+        // Group experiences by company (case-insensitive)
+        const experiencesByCompany = {};
+        currentExperiences.forEach((exp, index) => {
+            const companyKey = exp.company.toLowerCase().trim(); // Make company name case-insensitive
+            if (!experiencesByCompany[companyKey]) {
+                experiencesByCompany[companyKey] = {
+                    displayName: exp.company, // Keep original company name for display
+                    experiences: []
+                };
+            }
+            experiencesByCompany[companyKey].experiences.push({...exp, index});
+        });
+
+        // Sort experiences within each company by date (most recent first)
+        Object.values(experiencesByCompany).forEach(company => {
+            company.experiences.sort((a, b) => {
+                const dateA = a.endDate === 'Present' ? new Date() : new Date(a.endDate);
+                const dateB = b.endDate === 'Present' ? new Date() : new Date(b.endDate);
+                return dateB - dateA;
+            });
+        });
+
+        // Create DOM elements for each company and its experiences
+        Object.values(experiencesByCompany).forEach(({displayName, experiences}) => {
+            const companyContainer = document.createElement('div');
+            companyContainer.className = 'experience-item';
+
+            if (experiences.length === 1) {
+                // Single role at company - show traditional format
+                const exp = experiences[0];
+                companyContainer.innerHTML = `
+                    <div class="experience-header">
+                        <div class="title-section">
+                            <h3>${exp.title}</h3>
+                            <button onclick="showExperienceInfo('${exp.index}')" class="btn-icon info-icon" title="View Details">
+                                <i class="fas fa-info-circle"></i>
+                            </button>
+                        </div>
+                        <div class="experience-actions">
+                            <button onclick="editExperience('${exp.index}')" class="btn-icon" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="confirmDeleteExperience('${exp.index}')" class="btn-icon" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div class="experience-actions">
-                        <button onclick="editExperience('${index}')" class="btn-icon" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button onclick="confirmDeleteExperience('${index}')" class="btn-icon" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                    <p class="company">${displayName}</p>
+                    <p class="period">${exp.period}</p>
+                `;
+            } else {
+                // Multiple roles at company - show hierarchical format
+                companyContainer.innerHTML = `
+                    <div class="experience-header">
+                        <div class="title-section">
+                            <h3>${displayName}</h3>
+                        </div>
                     </div>
-                </div>
-                <p class="company">${experience.company}</p>
-                <p class="period">${experience.period}</p>
-            `;
-            experienceList.appendChild(experienceItem);
+                    <div class="roles-container">
+                        ${experiences.map(exp => `
+                            <div class="role-item">
+                                <div class="role-header">
+                                    <div class="title-section">
+                                        <h4>${exp.title}</h4>
+                                        <button onclick="showExperienceInfo('${exp.index}')" class="btn-icon info-icon" title="View Details">
+                                            <i class="fas fa-info-circle"></i>
+                                        </button>
+                                    </div>
+                                    <div class="experience-actions">
+                                        <button onclick="editExperience('${exp.index}')" class="btn-icon" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button onclick="confirmDeleteExperience('${exp.index}')" class="btn-icon" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="period">${exp.period}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            experienceList.appendChild(companyContainer);
         });
     } catch (error) {
         console.error('Failed to load experiences:', error);
@@ -4119,309 +4180,6 @@ window.addSkillCategory = addSkillCategory;
 window.loadSkillsContent = loadSkillsContent;
 window.showNotification = showNotification;
 
-// Add styles for message management
-const messageStyles = document.createElement('style');
-messageStyles.textContent = `
-    /* Message Management Styles */
-    .replied-badge {
-        background: #28a745;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        margin-left: 8px;
-    }
-
-    .not-replied-badge {
-        background: #6c757d;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        margin-left: 8px;
-    }
-
-    /* Message Section Styles */
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        padding: 0.5rem 0;
-    }
-    
-    .section-actions {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .icon-button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .icon-button:hover {
-        background: #f5f5f5;
-    }
-    
-    .icon-button.active {
-        background: #e0e0e0;
-    }
-    
-    /* Search Bar Styles */
-    .search-bar {
-        margin-bottom: 1rem;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-radius: 4px;
-    }
-    
-    .search-input-container {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .search-input-container input {
-        flex: 1;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-    }
-    
-    .clear-search {
-        padding: 0.5rem;
-        border: none;
-        background: none;
-        cursor: pointer;
-        color: #666;
-    }
-    
-    .clear-search:hover {
-        color: #333;
-    }
-    
-    /* Filter Bar Styles */
-    .filter-bar {
-        margin-bottom: 1rem;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-radius: 4px;
-    }
-    
-    .filter-group {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-    }
-    
-    .filter-group select {
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-    }
-    
-    .clear-filters {
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-    }
-
-    .clear-filters:hover {
-        background: #f5f5f5;
-    }
-
-    /* Bulk Actions Styles */
-    .bulk-actions {
-        display: flex;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-radius: 4px;
-    }
-    
-    .bulk-actions button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-    }
-    
-    .bulk-actions button:hover:not(:disabled) {
-        background: #f5f5f5;
-    }
-    
-    .bulk-actions button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    
-    /* Messages List Styles */
-    .messages-list {
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        overflow: hidden;
-    }
-    
-    .msg-item {
-        display: flex;
-        align-items: stretch;
-        border-bottom: 1px solid #ddd;
-        background: white;
-        transition: background-color 0.2s;
-    }
-    
-    .msg-item:last-child {
-        border-bottom: none;
-    }
-    
-    .msg-item:hover {
-        background: #f9f9f9;
-    }
-    
-    .msg-item.unread {
-        background: #f0f7ff;
-    }
-    
-    .msg-item.unread:hover {
-        background: #e5f0ff;
-    }
-    
-    .msg-checkbox {
-        display: none;
-        align-items: center;
-        padding: 1rem;
-        border-right: 1px solid #ddd;
-    }
-    
-    .msg-content {
-        flex: 1;
-        display: flex;
-        padding: 1rem;
-        cursor: pointer;
-    }
-    
-    .msg-icon {
-        display: flex;
-        align-items: center;
-        padding-right: 1rem;
-        color: #666;
-    }
-    
-    .msg-info {
-        flex: 1;
-    }
-    
-    .msg-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.25rem;
-    }
-    
-    .msg-name {
-        font-weight: bold;
-        color: #333;
-    }
-    
-    .msg-date {
-        color: #666;
-        font-size: 0.9em;
-    }
-    
-    .msg-email {
-        color: #666;
-        margin-bottom: 0.25rem;
-        font-size: 0.9em;
-    }
-    
-    .msg-preview {
-        color: #666;
-        font-size: 0.9em;
-        line-height: 1.4;
-    }
-    
-    .no-messages {
-        padding: 2rem;
-        text-align: center;
-        color: #666;
-    }
-    
-    /* Pagination Styles */
-    .pagination {
-        display: flex;
-        justify-content: center;
-        gap: 0.25rem;
-        margin-top: 1rem;
-    }
-    
-    .pagination button {
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-    }
-
-    .pagination button:hover:not(:disabled) {
-        background: #f5f5f5;
-    }
-    
-    .pagination button.active {
-        background: #007bff;
-        color: white;
-        border-color: #007bff;
-    }
-    
-    .pagination button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    
-    .pagination .ellipsis {
-        padding: 0.5rem;
-        color: #666;
-    }
-    
-    /* Message Detail Styles */
-    .message-detail {
-        background: white;
-        border-radius: 4px;
-        overflow: hidden;
-    }
-    
-    .message-detail-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-bottom: 1px solid #ddd;
-    }
-`;
-
-document.head.appendChild(messageStyles);
-
-// Message state management
-let currentPage = 1;
-let currentFilters = {
-    search: '',
-    status: 'all',
-    date: 'all'
-};
 
 // Initialize message list handlers
 function initializeMessageListHandlers() {
@@ -4498,23 +4256,17 @@ function selectAllVisibleMessages(event) {
 
 // Reset selection mode
 function resetSelectionMode() {
-    const selectAllContainer = document.querySelector('.select-all-container');
-    const messageCheckboxes = document.querySelectorAll('.message-select, .msg-checkbox');
-    const selectBtn = document.querySelector('.conversation-select-btn');
-    const bulkActions = document.getElementById('msgBulkActions');
-    const selectToggle = document.getElementById('msgSelectToggle');
-    
-    // Hide select all and checkboxes
-    if (selectAllContainer) {
-        selectAllContainer.style.display = 'none';
-    }
-    messageCheckboxes.forEach(checkbox => {
-        checkbox.style.display = 'none';
-    });
-    
-    // Reset button text
+    const bulkActions = document.querySelector('.bulk-actions');
+    const selectToggle = document.querySelector('.select-toggle');
+    const selectBtn = document.querySelector('.select-conversation-btn');
+    const cancelSelectionBtn = document.querySelector('.cancel-selection-btn');
+
     if (selectBtn) {
         selectBtn.textContent = 'Select Conversation';
+    }
+    
+    if (cancelSelectionBtn) {
+        cancelSelectionBtn.style.display = 'none';
     }
     
     // Hide bulk actions and deactivate toggle
@@ -4535,21 +4287,8 @@ function resetSelectionMode() {
         item.classList.remove('selected');
     });
     
-    // Reset button states to default
-    const buttons = {
-        'delete-all': 'Delete All',
-        'reply-all': 'Reply All',
-        'mark-read': '',
-        'mark-unread': ''
-    };
-    
-    Object.entries(buttons).forEach(([action, label]) => {
-        const button = document.querySelector(`[data-action="${action}"]`);
-        if (button) {
-            button.textContent = label;
-            button.disabled = false;
-        }
-    });
+    // Update bulk action buttons state using existing function
+    updateBulkActionButtons();
 }
 
 // Add to window object
@@ -4574,370 +4313,6 @@ document.addEventListener('DOMContentLoaded', function() {
 window.handleMessageSelect = handleMessageSelect;
 window.selectAllVisibleMessages = selectAllVisibleMessages;
 window.replyAllSelected = replyAllSelected;
-
-// Add styles for message management UI
-const style = document.createElement('style');
-style.textContent = `
-    /* Message Section Styles */
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        padding: 0.5rem 0;
-    }
-    
-    .section-actions {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .icon-button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .icon-button:hover {
-        background: #f5f5f5;
-    }
-    
-    .icon-button.active {
-        background: #e0e0e0;
-    }
-    
-    /* Search Bar Styles */
-    .search-bar {
-        margin-bottom: 1rem;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-radius: 4px;
-    }
-    
-    .search-input-container {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .search-input-container input {
-        flex: 1;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-    }
-    
-    .clear-search {
-        padding: 0.5rem;
-        border: none;
-        background: none;
-        cursor: pointer;
-        color: #666;
-    }
-    
-    .clear-search:hover {
-        color: #333;
-    }
-    
-    /* Filter Bar Styles */
-    .filter-bar {
-        margin-bottom: 1rem;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-radius: 4px;
-    }
-    
-    .filter-group {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-    }
-    
-    .filter-group select {
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-    }
-    
-    .clear-filters {
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-    }
-    
-    .clear-filters:hover {
-        background: #f5f5f5;
-    }
-    
-    /* Bulk Actions Styles */
-    .bulk-actions {
-        display: flex;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-radius: 4px;
-    }
-    
-    .bulk-actions button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-    }
-    
-    .bulk-actions button:hover:not(:disabled) {
-        background: #f5f5f5;
-    }
-    
-    .bulk-actions button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    
-    /* Messages List Styles */
-    .messages-list {
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        overflow: hidden;
-    }
-    
-    .msg-item {
-        display: flex;
-        align-items: stretch;
-        border-bottom: 1px solid #ddd;
-        background: white;
-        transition: background-color 0.2s;
-    }
-    
-    .msg-item:last-child {
-        border-bottom: none;
-    }
-    
-    .msg-item:hover {
-        background: #f9f9f9;
-    }
-    
-    .msg-item.unread {
-        background: #f0f7ff;
-    }
-    
-    .msg-item.unread:hover {
-        background: #e5f0ff;
-    }
-    
-    .msg-checkbox {
-        display: none;
-        align-items: center;
-        padding: 1rem;
-        border-right: 1px solid #ddd;
-    }
-    
-    .msg-content {
-        flex: 1;
-        display: flex;
-        padding: 1rem;
-        cursor: pointer;
-    }
-    
-    .msg-icon {
-        display: flex;
-        align-items: center;
-        padding-right: 1rem;
-        color: #666;
-    }
-    
-    .msg-info {
-        flex: 1;
-    }
-    
-    .msg-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.25rem;
-    }
-    
-    .msg-name {
-        font-weight: bold;
-        color: #333;
-    }
-    
-    .msg-date {
-        color: #666;
-        font-size: 0.9em;
-    }
-    
-    .msg-email {
-        color: #666;
-        margin-bottom: 0.25rem;
-        font-size: 0.9em;
-    }
-    
-    .msg-preview {
-        color: #666;
-        font-size: 0.9em;
-        line-height: 1.4;
-    }
-    
-    .no-messages {
-        padding: 2rem;
-        text-align: center;
-        color: #666;
-    }
-    
-    /* Pagination Styles */
-    .pagination {
-        display: flex;
-        justify-content: center;
-        gap: 0.25rem;
-        margin-top: 1rem;
-    }
-    
-    .pagination button {
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-    }
-
-    .pagination button:hover:not(:disabled) {
-        background: #f5f5f5;
-    }
-    
-    .pagination button.active {
-        background: #007bff;
-        color: white;
-        border-color: #007bff;
-    }
-    
-    .pagination button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    
-    .pagination .ellipsis {
-        padding: 0.5rem;
-        color: #666;
-    }
-    
-    /* Message Detail Styles */
-    .message-detail {
-        background: white;
-        border-radius: 4px;
-        overflow: hidden;
-    }
-    
-    .message-detail-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem;
-        background: #f5f5f5;
-        border-bottom: 1px solid #ddd;
-    }
-    
-    .back-button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .back-button:hover {
-        background: #f5f5f5;
-    }
-    
-    .message-actions {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .message-actions button {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background: white;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .message-actions button:hover {
-        background: #f5f5f5;
-    }
-    
-    .message-actions .delete-button {
-        border-color: #dc3545;
-        color: #dc3545;
-    }
-    
-    .message-actions .delete-button:hover {
-        background: #dc3545;
-        color: white;
-    }
-    
-    .message-detail-content {
-        padding: 2rem;
-    }
-    
-    .message-detail-info {
-        margin-bottom: 2rem;
-    }
-    
-    .message-detail-info h3 {
-        margin: 0 0 0.5rem 0;
-        color: #333;
-    }
-    
-    .message-detail-email {
-        margin: 0 0 0.25rem 0;
-        color: #666;
-    }
-    
-    .message-detail-date {
-        margin: 0;
-        color: #666;
-        font-size: 0.9em;
-    }
-    
-    .message-detail-body {
-        color: #333;
-        line-height: 1.6;
-    }
-    
-    .message-detail-body p {
-        margin: 0 0 1rem 0;
-    }
-    
-    .message-detail-body p:last-child {
-        margin-bottom: 0;
-    }
-`;
-
-document.head.appendChild(style);
-
-
-
 
 async function getMessagesFromDB() {
     try {
@@ -5276,7 +4651,6 @@ async function loadMessagesSection() {
                 <div class="message-filters">
                     <div class="search-container">
                         <input type="text" id="messageSearch" placeholder="Search by name or email..." class="search-input">
-                        <i class="fas fa-search search-icon"></i>
                     </div>
                     <select id="messageFilter" class="filter-select">
                         <option value="all">All Messages</option>
@@ -5285,7 +4659,7 @@ async function loadMessagesSection() {
                     </select>
                     <input type="date" id="dateFilter" class="filter-select" title="Filter by date">
                     <button id="resetFilters" class="message-btn" onclick="resetFilters()" style="display: none;">
-                        <i class="fas fa-times"></i> Reset Filters
+                        <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
@@ -5300,9 +4674,6 @@ async function loadMessagesSection() {
                 <button onclick="replyAllSelected()" class="message-btn" data-action="reply-all">
                     <i class="fas fa-reply-all"></i> Reply All
                 </button>
-                <button onclick="deleteSelectedMessages()" class="message-btn delete-button" data-action="delete">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
             </div>
             <div id="messagesList" class="messages-list">
                 <p class="no-messages">No messages found.</p>
@@ -5314,7 +4685,24 @@ async function loadMessagesSection() {
             if (Array.isArray(messages)) {
                 // Update current messages in memory
                 window.currentMessages = messages;
-                renderMessagesList(messages);
+                
+                // Check if we're in message details view
+                const messagesList = document.querySelector('.messages-list');
+                const currentMessageId = messagesList?.dataset?.currentMessageId;
+                const currentOpenEmail = window.currentOpenConversation;
+                
+                if (currentOpenEmail) {
+                    // We're in message details view, update it
+                    const conversationMessages = messages.filter(msg => msg.email === currentOpenEmail);
+                    if (conversationMessages.length > 0) {
+                        // Re-render the current message details to show updated data
+                        showMessageDetails(currentMessageId || conversationMessages[0].id);
+                    }
+                } else {
+                    // We're in list view, update it
+                    renderMessagesList(messages);
+                }
+                
                 updateMessageStats(messages);
             }
         });
@@ -5339,6 +4727,11 @@ async function loadMessagesSection() {
 
 // Simplify backToMessages to just reset and reload the messages section
 function backToMessages() {
+    const messagesList = document.querySelector('.messages-list');
+    if (messagesList) {
+        messagesList.dataset.currentMessageId = '';
+    }
+
     // Reset the current open conversation
     window.currentOpenConversation = null;
     
@@ -5419,7 +4812,10 @@ function updateMessagesList(messages) {
                             <span class="message-date">${formatDate(latestMessage.createdAt)}</span>
                         </div>
                         <div class="message-email">${email} (${emailMessages.length} messages)</div>
-                        <div class="message-preview">${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}</div>
+                        <div class="message-preview">
+                            <span>${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}</span>
+                            ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1}</span>` : ''}
+                        </div>
                     </div>
                     <div class="message-actions">
                         <button class="btn-icon" onclick="event.stopPropagation(); toggleConversationRead('${email}')">
@@ -5440,6 +4836,11 @@ function updateMessagesList(messages) {
 // Function to show message details/conversation
 async function showMessageDetails(messageId) {
     try {
+        const messagesList = document.querySelector('.messages-list');
+        if (messagesList) {
+            messagesList.dataset.currentMessageId = messageId;
+        }
+
         const messages = window.currentMessages;
         const message = messages.find(m => m.id === messageId);
         if (!message) return;
@@ -5504,9 +4905,6 @@ async function showMessageDetails(messageId) {
                         <span>Select All (0/0)</span>
                     </div>
                     <div class="bulk-actions" style="display: none;">
-                        <button onclick="markSelectedMessagesAsRead()" class="message-btn btn-primary" data-action="mark-read">
-                            <i class="fas fa-envelope-open"></i>
-                        </button>
                         <button onclick="markSelectedMessagesAsUnread()" class="message-btn btn-info" data-action="mark-unread">
                             <i class="fas fa-envelope"></i>
                         </button>
@@ -5531,17 +4929,18 @@ async function showMessageDetails(messageId) {
                                    onclick="handleMessageSelect(event)">
                         </div>
                         <div class="message-entry">
-                            <div class="message-time">${formatDate(msg.createdAt, 'MMM D, YYYY h:mm A')}</div>
+                            
                             <div class="message-content">
+                             <div class="message-time">${formatDate(msg.createdAt, 'MMM D, YYYY h:mm A')}</div>
                                 <div class="message-sender">
-                                    From: ${msg.name}
+                                    As: ${msg.name}
                                     ${!msg.read ? '<span class="unread-dot"></span>' : ''}
                                 </div>
                                 <div class="message-text">${msg.message}</div>
                                 ${msg.repliedAt ? `
                                     <div class="replied-info">
                                         <span class="replied-badge">
-                                            <i class="fas fa-reply"></i> Replied ${formatDate(msg.repliedAt, 'MMM D, YYYY h:mm A')}
+                                             Replied ${formatDate(msg.repliedAt, 'MMM D, YYYY h:mm A')}
                                         </span>
                                     </div>
                                 ` : ''}
@@ -5827,6 +5226,12 @@ function renderMessagesList(messages) {
     const messagesList = document.querySelector('.messages-list');
     if (!messagesList) return;
 
+    // Don't update if we're in details view (this is now handled by the subscription)
+    const currentMessageId = messagesList.dataset.currentMessageId;
+    if (currentMessageId) {
+        return;
+    }
+
     if (!messages || messages.length === 0) {
         messagesList.innerHTML = `
             <div class="messages-empty">
@@ -5865,7 +5270,14 @@ function renderMessagesList(messages) {
 
     // Create header with selection button and action buttons
     const headerHtml = `
-        <div class="messages-header">
+            <div id="msgBulkActions" class="bulk-actions" style="display: none;">
+                <button class="message-btn btn-info" data-action="mark-read" onclick="markSelectedMessagesAsRead()">
+                    <i class="fas fa-envelope-open"></i>
+                </button>
+                <button class="message-btn btn-info" data-action="mark-unread" onclick="markSelectedMessagesAsUnread()">
+                    <i class="fas fa-envelope"></i>
+                </button>
+            </div>
             <div class="header-left">
                 <button id="msgSelectToggle" class="message-btn" onclick="toggleMessageSelection()">
                     <i class="fas fa-check-square"></i> Select Messages
@@ -5874,21 +5286,6 @@ function renderMessagesList(messages) {
                     <input type="checkbox" id="selectAllMessages" onchange="selectAllMessages(event)">
                     <span>Select All (0/0)</span>
                 </div>
-            </div>
-            <div id="msgBulkActions" class="bulk-actions" style="display: none;">
-                <button class="message-btn btn-primary" data-action="mark-read" onclick="markSelectedMessagesAsRead()">
-                    <i class="fas fa-envelope-open"></i>
-                </button>
-                <button class="message-btn btn-info" data-action="mark-unread" onclick="markSelectedMessagesAsUnread()">
-                    <i class="fas fa-envelope"></i>
-                </button>
-                <button class="message-btn btn-success" data-action="reply-all" onclick="replyAllSelected()">
-                    <i class="fas fa-reply-all"></i>
-                </button>
-                <button class="message-btn btn-danger" data-action="delete" onclick="deleteSelectedMessages()">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
         </div>
     `;
 
@@ -5910,12 +5307,17 @@ function renderMessagesList(messages) {
                            data-email="${email}">
                 </div>
                 <div class="message-list-content">
-                    <div class="message-list-sender">${name}</div>
-                    <div class="message-list-preview">
-                        ${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}
-                        ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1} messages</span>` : ''}
+                    <div class="message-list-avatar">
+                        ${getInitials(name)}
                     </div>
-                    <div class="message-list-time">${formatDate(latestMessage.createdAt, 'MMM D, YYYY h:mm A')}</div>
+                    <div class="message-list-details">
+                        <div class="message-list-sender">${name}</div>
+                        <div class="message-list-preview">
+                            <span>${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}</span>
+                            ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1}</span>` : ''}
+                        </div>
+                        <div class="message-list-time">${formatDate(latestMessage.createdAt, 'MMM D, YYYY')}</div>
+                    </div>
                 </div>
             </div>
         `;
@@ -6158,8 +5560,80 @@ window.addEventListener('resize', () => {
     }, 250);
 });
 
+// Function to get initials from name
+function getInitials(name) {
+    return name
+        .split(' ')
+        .map(word => word.charAt(0))
+        .join('')
+        .toUpperCase()
+        .substring(0, 2);
+}
 
+// Function to get unique companies from experiences
+function getUniqueCompanies() {
+    const companies = new Set();
+    currentExperiences.forEach(exp => {
+        companies.add(exp.company);
+    });
+    return Array.from(companies);
+}
 
+// Function to setup company autocomplete
+function setupCompanyAutocomplete() {
+    const companyInput = document.getElementById('experienceCompany');
+    const autocompleteList = document.createElement('ul');
+    autocompleteList.className = 'company-autocomplete';
+    companyInput.parentNode.appendChild(autocompleteList);
 
+    companyInput.addEventListener('input', function() {
+        const inputValue = this.value.toLowerCase();
+        const companies = getUniqueCompanies();
+        
+        // Clear previous suggestions
+        autocompleteList.innerHTML = '';
+        
+        if (inputValue.length === 0) {
+            autocompleteList.style.display = 'none';
+            return;
+        }
 
+        // Filter and display matching companies
+        const matches = companies.filter(company => 
+            company.toLowerCase().includes(inputValue)
+        );
 
+        if (matches.length > 0) {
+            autocompleteList.style.display = 'block';
+            matches.forEach(company => {
+                const li = document.createElement('li');
+                li.textContent = company;
+                li.addEventListener('click', () => {
+                    companyInput.value = company;
+                    autocompleteList.style.display = 'none';
+                });
+                autocompleteList.appendChild(li);
+            });
+        } else {
+            autocompleteList.style.display = 'none';
+        }
+    });
+
+    // Hide autocomplete list when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!companyInput.contains(e.target)) {
+            autocompleteList.style.display = 'none';
+        }
+    });
+}
+
+// Call setupCompanyAutocomplete when showing the form
+function showExperienceForm() {
+    document.getElementById('experienceList').style.display = 'none';
+    const experienceForm = document.getElementById('experienceForm');
+    experienceForm.style.display = 'block';
+    experienceForm.reset();
+    document.getElementById('experienceDescriptionEditor').innerHTML = '';
+    currentExperienceId = null;
+    setupCompanyAutocomplete();
+}

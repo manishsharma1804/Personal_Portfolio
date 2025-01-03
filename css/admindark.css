@@ -69,7 +69,6 @@
 [data-theme="dark"] .stat-card {
     background: var(--admin-card-bg);
     border: 1px solid var(--admin-border);
-    backdrop-filter: blur(10px);
 }
 
 [data-theme="dark"] .stat-card i {
