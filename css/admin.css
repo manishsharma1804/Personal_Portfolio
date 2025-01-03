@@ -3128,6 +3128,34 @@ input[type="color"] {
     }
 }
 
+@media (max-width: 768px) {
+    .navbar-logo {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-60%);
+        margin: 0;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        right: auto;
+    }
+
+    .navbar-logo img {
+        height: 100%;
+        width: auto;
+        display: block;
+    }
+
+    .top-bar {
+        padding: 0.5rem 1rem;
+        height: 50px;
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+}
+
 
 
 

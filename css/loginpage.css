@@ -246,7 +246,6 @@
 /* Mobile Responsive */
 @media (max-width: 768px) {
     .login-box {
-        margin: 1rem;
         padding: 1.5rem;
     }
 

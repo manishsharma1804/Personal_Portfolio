@@ -668,7 +668,7 @@ body {
     text-decoration: none;
     font-weight: 500;
     transition: all 0.3s;
-    margin: 0.5rem;
+    margin-top: 0.5rem;
 }
 
 .primary {
@@ -1028,7 +1028,6 @@ input, textarea {
     border: 1px solid var(--border-color);
     border-radius: 5px;
     font-size: 1rem;
-    margin-bottom: 1rem;  /* Add spacing between form elements */
 }
 
 textarea {
