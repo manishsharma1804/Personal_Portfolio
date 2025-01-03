@@ -11,7 +11,8 @@ import {
     updateDoc,
     serverTimestamp,
     getDoc,
-    onSnapshot
+    onSnapshot,
+    where
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 import {
     auth,
@@ -3628,8 +3629,9 @@ window.removeSkillCategory = removeSkillCategory;
 window.removeSkill = removeSkill;
 window.updateSkillLevel = updateSkillLevel;
 window.updateSkillIcon = updateSkillIcon;
+window.createSkillEditItem = createSkillEditItem;
 window.cancelSkillsEdit = cancelSkillsEdit;
-window.showAddSkillDialog = showAddSkillDialog;
+window.expandCategory = expandCategory;
 
 // Skills Functions
 function addSkillCategory(category = { name: '', skills: [] }) {
@@ -4361,52 +4363,83 @@ window.showMessageDetails = showMessageDetails;
 async function composeReply(email, isReplyAll, messageId = null) {
     try {
         const message = messageId ? currentMessages.find(m => m.id === messageId) : null;
-        const subject = message ? `Re: Message from ${message.name}` : `Re: Conversation`;
-        const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}`;
-        
-        if (message) {
-            // Update the message with reply timestamp
-            const messageRef = doc(db, 'messages', messageId);
-            await updateDoc(messageRef, {
-                repliedAt: serverTimestamp()
-            });
+        if (!message) {
+            console.error('Message not found');
+            return;
+        }
 
-            // Create a reply template with original message context
-            const replyBody = `\n\n-------------------\nOn ${new Date(message.createdAt).toLocaleString()}, ${message.name} wrote:\n${message.message}`;
-            window.location.href = `${mailtoLink}&body=${encodeURIComponent(replyBody)}`;
+        // Update the message with reply timestamp
+        const messageRef = doc(db, 'messages', messageId);
+        await updateDoc(messageRef, {
+            repliedAt: serverTimestamp()
+        });
 
-            // Update UI to show replied status
-            const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-            if (messageElement) {
-                const repliedInfo = document.createElement('div');
-                repliedInfo.className = 'replied-info';
-                repliedInfo.innerHTML = `<span class="replied-badge">Replied ${formatDate(new Date(), 'MMM D, YYYY h:mm A')}</span>`;
-                
-                // Remove any existing replied-info
-                const existingRepliedInfo = messageElement.querySelector('.replied-info');
-                if (existingRepliedInfo) {
-                    existingRepliedInfo.remove();
-                }
-                
-                // Add the new replied info after message-content
-                const messageContent = messageElement.querySelector('.message-content');
-                if (messageContent) {
-                    messageContent.appendChild(repliedInfo);
-                }
-            }
+        // Get the message date and format it properly
+        let messageDate;
+        if (message.createdAt?.toDate) {
+            // If it's a Firestore timestamp
+            messageDate = message.createdAt.toDate();
+        } else if (message.createdAt instanceof Date) {
+            // If it's already a Date object
+            messageDate = message.createdAt;
+        } else if (typeof message.createdAt === 'string') {
+            // If it's an ISO string
+            messageDate = new Date(message.createdAt);
         } else {
-            window.location.href = mailtoLink;
+            // Fallback to current date
+            messageDate = new Date();
+        }
+
+        // Format the date nicely
+        const formattedDate = messageDate.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+
+        // Create a reply template with original message context
+        const replyBody = `On ${formattedDate}, you wrote as ${message.name}:\n${message.message}\n`;
+        
+        // Create mailto link with subject and body
+        const subject = `Re: Message from ${message.name}`;
+        const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(replyBody)}`;
+        
+        // Open email client
+        window.location.href = mailtoLink;
+
+        // Update UI to show replied status
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (messageElement) {
+            const repliedInfo = document.createElement('div');
+            repliedInfo.className = 'replied-info';
+            repliedInfo.innerHTML = `<span class="replied-badge">Replied ${formatDate(new Date(), 'MMM D, YYYY h:mm A')}</span>`;
+            
+            // Remove any existing replied-info
+            const existingRepliedInfo = messageElement.querySelector('.replied-info');
+            if (existingRepliedInfo) {
+                existingRepliedInfo.remove();
+            }
+            
+            // Add the new replied info after message-content
+            const messageContent = messageElement.querySelector('.message-content');
+            if (messageContent) {
+                messageContent.appendChild(repliedInfo);
+            }
         }
     } catch (error) {
-        console.error('Error updating reply status:', error);
-        showNotification('Failed to update reply status', 'error');
+        console.error('Error composing reply:', error);
+        showNotification('Failed to compose reply', 'error');
     }
 }
 
 // Add to window object
 window.composeReply = composeReply;
 
-// Add handleReply function
+// Function to handle reply to messages
 async function handleReply(email, isReplyAll, messageId) {
     try {
         // Update the message with reply timestamp
@@ -4415,26 +4448,56 @@ async function handleReply(email, isReplyAll, messageId) {
             repliedAt: serverTimestamp()
         });
 
-        // Update local state
+        // Find the message in current messages
         const message = currentMessages.find(m => m.id === messageId);
-        if (message) {
-            message.repliedAt = new Date().toISOString();
-            
-            // Update the UI immediately
-            const replyBadge = document.querySelector(`[data-message-id="${messageId}"]`)
-                .closest('.message-thread-item')
-                .querySelector('.metadata-left .not-replied-badge');
-            if (replyBadge) {
-                replyBadge.className = 'replied-badge';
-                replyBadge.textContent = `Replied ${formatDate(message.repliedAt, 'MMM D, YYYY HH:mm')}`;
-            }
+        if (!message) {
+            console.error('Message not found');
+            return;
         }
 
-        // Compose the reply
-        composeReply(email, isReplyAll, messageId);
+        // Convert Firestore timestamp to Date
+        let messageDate;
+        if (message.createdAt?.toDate) {
+            messageDate = message.createdAt.toDate();
+        } else if (message.createdAt instanceof Date) {
+            messageDate = message.createdAt;
+        } else if (typeof message.createdAt === 'string') {
+            messageDate = new Date(message.createdAt);
+        } else {
+            messageDate = new Date();
+        }
+
+        // Format the date
+        const formattedDate = messageDate.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+
+        // Format the reply content
+        const replyContent = `\n\n----------------------------------------\nOn ${formattedDate}, ${message.name} wrote:\n\n${message.message}\n----------------------------------------\n\n`;
+
+        // Create mailto link
+        const subject = message.subject ? `Re: ${message.subject}` : 'Re: Your Message';
+        const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(replyContent)}`;
+        
+        // Open email client
+        window.location.href = mailtoLink;
+
+        // Update UI to show replied status
+        const replyBadge = document.querySelector(`[data-message-id="${messageId}"] .not-replied-badge`);
+        if (replyBadge) {
+            replyBadge.className = 'replied-badge';
+            replyBadge.textContent = `Replied ${formatDate(new Date(), 'MMM D, YYYY HH:mm')}`;
+        }
+
     } catch (error) {
-        console.error('Error updating reply status:', error);
-        showNotification('Failed to update reply status', 'error');
+        console.error('Error handling reply:', error);
+        showNotification('Failed to send reply', 'error');
     }
 }
 
@@ -4553,7 +4616,45 @@ window.toggleConversationSelect = toggleConversationSelect;
 window.selectAllMessages = selectAllMessages;
 window.resetSelectionMode = resetSelectionMode;
 
-// ... existing code ...
+function showConfirmDialog(message) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-dialog-overlay';
+        
+        const dialog = document.createElement('div');
+        dialog.className = 'confirm-dialog';
+        
+        dialog.innerHTML = `
+            <div class="confirm-dialog-header">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h3>Confirm Delete</h3>
+            </div>
+            <div class="confirm-dialog-content">
+                ${message}
+            </div>
+            <div class="confirm-dialog-actions">
+                <button class="cancel-btn">Cancel</button>
+                <button class="delete-btn">Delete</button>
+            </div>
+        `;
+        
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        
+        const cancelBtn = dialog.querySelector('.cancel-btn');
+        const deleteBtn = dialog.querySelector('.delete-btn');
+        
+        cancelBtn.addEventListener('click', () => {
+            overlay.remove();
+            resolve(false);
+        });
+        
+        deleteBtn.addEventListener('click', () => {
+            overlay.remove();
+            resolve(true);
+        });
+    });
+}
 
 async function deleteSelectedMessages() {
     const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
@@ -4562,7 +4663,11 @@ async function deleteSelectedMessages() {
         return;
     }
 
-    if (!confirm('Are you sure you want to delete the selected messages?')) {
+    const confirmed = await showConfirmDialog(
+        `Are you sure you want to delete ${selectedMessages.length} selected message${selectedMessages.length > 1 ? 's' : ''}? This action cannot be undone.`
+    );
+
+    if (!confirmed) {
         return;
     }
 
@@ -4583,13 +4688,35 @@ async function deleteSelectedMessages() {
         });
 
         await Promise.all(deletePromises);
-        await createDashboard();
 
-        // If no messages left in conversation, return to messages list
+        // If no messages left in conversation, return to messages list and refresh it
         const email = selectedMessages[0].dataset.email;
         const remainingMessages = currentMessages.filter(msg => msg.email === email);
         if (remainingMessages.length === 0) {
+            // Reset the messages list view
+            const messagesList = document.querySelector('.messages-list');
+            if (messagesList) {
+                messagesList.innerHTML = getEmptyStateHtml();
+            }
+            
+            // Fetch fresh messages from the database
+            const messagesQuery = query(collection(db, 'messages'), orderBy('createdAt', 'desc'));
+            const messagesSnapshot = await getDocs(messagesQuery);
+            const messages = messagesSnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            
+            // Update current messages
+            currentMessages = messages;
+            
+            // Show messages section
             await loadMessagesSection();
+
+            // If there are messages, render them, otherwise keep the empty state
+            if (messages.length > 0) {
+                renderMessagesList(messages);
+            }
         } else {
             resetSelectionMode();
         }
@@ -4664,16 +4791,24 @@ async function loadMessagesSection() {
                 </div>
             </div>
             <div id="messageStats" class="stats-container"></div>
-            <div class="bulk-actions" style="display: none;">
-                <button onclick="markSelectedMessagesAsRead()" class="message-btn" data-action="mark-read">
-                    <i class="fas fa-envelope-open"></i> Mark as Read
-                </button>
-                <button onclick="markSelectedMessagesAsUnread()" class="message-btn" data-action="mark-unread">
-                    <i class="fas fa-envelope"></i> Mark as Unread
-                </button>
-                <button onclick="replyAllSelected()" class="message-btn" data-action="reply-all">
-                    <i class="fas fa-reply-all"></i> Reply All
-                </button>
+            <div class="messages-header">
+                <div id="msgBulkActions" class="bulk-actions" style="display: none;">
+                    <button class="message-btn btn-info" data-action="mark-read" onclick="markSelectedMessagesAsRead()">
+                        <i class="fas fa-envelope-open"></i>
+                    </button>
+                    <button class="message-btn btn-info" data-action="mark-unread" onclick="markSelectedMessagesAsUnread()">
+                        <i class="fas fa-envelope"></i>
+                    </button>
+                </div>
+                <div class="header-left">
+                    <button id="msgSelectToggle" class="message-btn" onclick="toggleMessageSelection()">
+                        <i class="fas fa-check-square"></i> Select Messages
+                    </button>
+                    <div class="select-all-container" style="display: none;">
+                        <input type="checkbox" id="selectAllMessages" onchange="selectAllMessages(event)">
+                        <span>Select All (0/0)</span>
+                    </div>
+                </div>
             </div>
             <div id="messagesList" class="messages-list">
                 <p class="no-messages">No messages found.</p>
@@ -4813,8 +4948,8 @@ function updateMessagesList(messages) {
                         </div>
                         <div class="message-email">${email} (${emailMessages.length} messages)</div>
                         <div class="message-preview">
-                            <span>${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}</span>
-                            ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1}</span>` : ''}
+                            <span>${latestMessage.message?.substring(0, 50)}${latestMessage.message?.length > 50 ? '...' : ''}</span>
+                            ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1} more</span>` : ''}
                         </div>
                     </div>
                     <div class="message-actions">
@@ -4827,7 +4962,7 @@ function updateMessagesList(messages) {
                     </div>
                 </div>
             `;
-        }).join('');
+        }).join('') + '<div class="end-message">End of Messages</div>';
 
     // Initialize message handlers
     initializeMessageListHandlers();
@@ -4850,9 +4985,23 @@ async function showMessageDetails(messageId) {
         // Store the current email in a global variable to track which conversation is open
         window.currentOpenConversation = email;
 
+        // Set initial last message time for new message detection
+        const latestMessage = messages
+            .filter(m => m.email === email)
+            .sort((a, b) => b.createdAt?.toDate?.() - a.createdAt?.toDate?.())[0];
+        window.lastMessageTime = latestMessage?.createdAt?.toDate?.() || new Date(latestMessage?.createdAt);
+
+        // Setup real-time listener for new messages
+        if (window.messageListener) {
+            window.messageListener(); // Unsubscribe from previous listener
+        }
+        window.messageListener = setupMessageListener(email);
+        
         const conversationMessages = messages.filter(m => m.email === email)
             .sort((a, b) => b.createdAt?.toDate?.() - a.createdAt?.toDate?.());
 
+        // Rest of the existing code...
+        
         // Get sender details
         const nameFrequency = {};
         conversationMessages.forEach(msg => {
@@ -4929,9 +5078,8 @@ async function showMessageDetails(messageId) {
                                    onclick="handleMessageSelect(event)">
                         </div>
                         <div class="message-entry">
-                            
                             <div class="message-content">
-                             <div class="message-time">${formatDate(msg.createdAt, 'MMM D, YYYY h:mm A')}</div>
+                                <div class="message-time">${formatDate(msg.createdAt, 'MMM D, YYYY h:mm A')}</div>
                                 <div class="message-sender">
                                     As: ${msg.name}
                                     ${!msg.read ? '<span class="unread-dot"></span>' : ''}
@@ -4940,7 +5088,7 @@ async function showMessageDetails(messageId) {
                                 ${msg.repliedAt ? `
                                     <div class="replied-info">
                                         <span class="replied-badge">
-                                             Replied ${formatDate(msg.repliedAt, 'MMM D, YYYY h:mm A')}
+                                            Replied ${formatDate(msg.repliedAt, 'MMM D, YYYY h:mm A')}
                                         </span>
                                     </div>
                                 ` : ''}
@@ -4953,6 +5101,7 @@ async function showMessageDetails(messageId) {
                         </div>
                     </div>
                 `).join('')}
+                <div class="end-message">End of Messages</div>
             </div>
         `;
         
@@ -5222,23 +5371,38 @@ function debounce(func, wait) {
     };
 }
 
+// Function to generate empty state HTML
+function getEmptyStateHtml() {
+    const emptyLines = Array(20).fill(null).map(() => '<div class="empty-line"></div>').join('');
+    return `
+        <div class="messages-empty">
+            <div class="empty-animation">
+                <i class="far fa-envelope empty-icon"></i>
+                <i class="fas fa-wind wind-icon"></i>
+            </div>
+            <h3>No Messages Yet!</h3>
+            <p>It's quiet here... too quiet 🤫</p>
+            <p class="empty-subtitle">When messages arrive, they'll show up here like magic ✨</p>
+            <div class="empty-lines">
+                ${emptyLines}
+            </div>
+        </div>
+    `;
+}
+
+// Update renderMessagesList function
 function renderMessagesList(messages) {
     const messagesList = document.querySelector('.messages-list');
     if (!messagesList) return;
 
-    // Don't update if we're in details view (this is now handled by the subscription)
+    // Don't update if we're in details view
     const currentMessageId = messagesList.dataset.currentMessageId;
     if (currentMessageId) {
         return;
     }
 
     if (!messages || messages.length === 0) {
-        messagesList.innerHTML = `
-            <div class="messages-empty">
-                <i class="fas fa-inbox"></i>
-                <p>No messages found</p>
-            </div>
-        `;
+        messagesList.innerHTML = getEmptyStateHtml();
         return;
     }
 
@@ -5268,29 +5432,8 @@ function renderMessagesList(messages) {
         })
         .sort((a, b) => b.latestMessage.createdAt - a.latestMessage.createdAt);
 
-    // Create header with selection button and action buttons
-    const headerHtml = `
-            <div id="msgBulkActions" class="bulk-actions" style="display: none;">
-                <button class="message-btn btn-info" data-action="mark-read" onclick="markSelectedMessagesAsRead()">
-                    <i class="fas fa-envelope-open"></i>
-                </button>
-                <button class="message-btn btn-info" data-action="mark-unread" onclick="markSelectedMessagesAsUnread()">
-                    <i class="fas fa-envelope"></i>
-                </button>
-            </div>
-            <div class="header-left">
-                <button id="msgSelectToggle" class="message-btn" onclick="toggleMessageSelection()">
-                    <i class="fas fa-check-square"></i> Select Messages
-                </button>
-                <div class="select-all-container" style="display: none;">
-                    <input type="checkbox" id="selectAllMessages" onchange="selectAllMessages(event)">
-                    <span>Select All (0/0)</span>
-                </div>
-        </div>
-    `;
-
     // Render conversations
-    const conversationsHtml = sortedConversations.map(conv => {
+    messagesList.innerHTML = sortedConversations.map(conv => {
         const { email, name, latestMessage, unreadCount, messages } = conv;
         const isUnread = unreadCount > 0;
         const messageCount = messages.length;
@@ -5312,18 +5455,16 @@ function renderMessagesList(messages) {
                     </div>
                     <div class="message-list-details">
                         <div class="message-list-sender">${name}</div>
-                        <div class="message-list-preview">
-                            <span>${latestMessage.message?.substring(0, 100)}${latestMessage.message?.length > 100 ? '...' : ''}</span>
-                            ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1}</span>` : ''}
-                        </div>
                         <div class="message-list-time">${formatDate(latestMessage.createdAt, 'MMM D, YYYY')}</div>
+                        <div class="message-list-preview">
+                            <span>${latestMessage.message?.substring(0, 50)}${latestMessage.message?.length > 50 ? '...' : ''}</span>
+                            ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1} more</span>` : ''}
+                        </div>
                     </div>
                 </div>
             </div>
         `;
-    }).join('');
-
-    messagesList.innerHTML = headerHtml + conversationsHtml;
+    }).join('') + '<div class="end-message">End of Messages</div>';
 }
 
 // Toggle message selection mode
@@ -5377,55 +5518,25 @@ function toggleMessageSelection() {
 
 // Update bulk action buttons based on selection
 function updateBulkActionButtons() {
-    // First check if we're in list view or detail view
+    const selectedCount = document.querySelectorAll('.message-checkbox:checked').length;
     const bulkActions = document.getElementById('msgBulkActions') || document.querySelector('.bulk-actions');
-    if (!bulkActions) return;
     
-    const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
-    const totalMessages = document.querySelectorAll('.message-checkbox');
-    const markReadBtn = bulkActions.querySelector('[data-action="mark-read"]');
-    const markUnreadBtn = bulkActions.querySelector('[data-action="mark-unread"]');
-    const replyAllBtn = bulkActions.querySelector('[data-action="reply-all"]');
-    const deleteBtn = bulkActions.querySelector('[data-action="delete"]');
-    
-    // Update selection count
-    const selectAllContainer = document.querySelector('.select-all-container');
-    if (selectAllContainer) {
-        selectAllContainer.querySelector('span').textContent = 
-            `Select All (${selectedMessages.length}/${totalMessages.length})`;
-    }
-    
-    if (selectedMessages.length > 0) {
-        // Show bulk actions container
+    if (selectedCount > 0) {
         bulkActions.style.display = 'flex';
-        
-        // Check if all selected messages are read/unread
-        const allRead = Array.from(selectedMessages).every(cb => {
-            const messageItem = cb.closest('.message-list-item, .message-thread-item');
-            return !messageItem.classList.contains('unread');
-        });
-        
-        const allUnread = Array.from(selectedMessages).every(cb => {
-            const messageItem = cb.closest('.message-list-item, .message-thread-item');
-            return messageItem.classList.contains('unread');
-        });
-        
-        // Show/hide appropriate buttons
-        if (markReadBtn) {
-            markReadBtn.style.display = allRead ? 'none' : 'inline-flex';
-        }
-        if (markUnreadBtn) {
-            markUnreadBtn.style.display = allUnread ? 'none' : 'inline-flex';
-        }
-        if (replyAllBtn) {
-            replyAllBtn.style.display = 'inline-flex';
-        }
-        if (deleteBtn) {
-            deleteBtn.style.display = 'inline-flex';
+        // Update reply button to use handleBulkReply
+        const replyButton = bulkActions.querySelector('[data-action="reply-all"]');
+        if (replyButton) {
+            replyButton.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleBulkReply();
+            };
         }
     } else {
-        // Hide bulk actions container
         bulkActions.style.display = 'none';
+        if (document.querySelector('.select-all-checkbox')) {
+            document.querySelector('.select-all-checkbox').checked = false;
+        }
     }
 }
 
@@ -5636,4 +5747,352 @@ function showExperienceForm() {
     document.getElementById('experienceDescriptionEditor').innerHTML = '';
     currentExperienceId = null;
     setupCompanyAutocomplete();
+}
+
+// Add these variables at the top of your file
+let isLoadingMore = false;
+const MESSAGES_PER_PAGE = 20;
+let currentPage = 1;
+let hasMoreMessages = true;
+
+// Add scroll event listeners after DOM elements are ready
+function initializeScrollListeners() {
+    const messagesList = document.querySelector('.messages-list');
+    const messagesTimeline = document.querySelector('.messages-timeline');
+
+    if (messagesList) {
+        messagesList.addEventListener('scroll', handleListScroll);
+    }
+
+    if (messagesTimeline) {
+        messagesTimeline.addEventListener('scroll', handleDetailScroll);
+    }
+}
+
+// Handle scroll for message list
+async function handleListScroll(e) {
+    const container = e.target;
+    const scrollPosition = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const containerHeight = container.clientHeight;
+    
+    // Check if we're near the bottom (within 100px)
+    if (scrollHeight - (scrollPosition + containerHeight) < 100) {
+        if (!isLoadingMore && hasMoreMessages) {
+            isLoadingMore = true;
+            // Show loading indicator
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.className = 'loading-indicator';
+            loadingIndicator.innerHTML = '<div class="loading-spinner"></div>';
+            container.appendChild(loadingIndicator);
+
+            try {
+                // Load more messages
+                const moreMessages = await loadMoreMessages(currentPage + 1);
+                if (moreMessages.length > 0) {
+                    currentPage++;
+                    // Append new messages to the list
+                    appendNewMessages(moreMessages);
+                } else {
+                    hasMoreMessages = false;
+                }
+            } catch (error) {
+                console.error('Error loading more messages:', error);
+            } finally {
+                isLoadingMore = false;
+                // Remove loading indicator
+                container.querySelector('.loading-indicator')?.remove();
+            }
+        }
+    }
+}
+
+// Handle scroll for message detail view
+async function handleDetailScroll(e) {
+    const container = e.target;
+    const scrollPosition = container.scrollTop;
+    const scrollHeight = container.scrollHeight;
+    const containerHeight = container.clientHeight;
+    
+    if (scrollHeight - (scrollPosition + containerHeight) < 100) {
+        if (!isLoadingMore && hasMoreMessages) {
+            isLoadingMore = true;
+            // Show loading indicator
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.className = 'loading-indicator';
+            loadingIndicator.innerHTML = '<div class="loading-spinner"></div>';
+            container.appendChild(loadingIndicator);
+
+            try {
+                // Load more messages for the current conversation
+                const email = window.currentOpenConversation;
+                const moreMessages = await loadMoreDetailMessages(email, currentPage + 1);
+                if (moreMessages.length > 0) {
+                    currentPage++;
+                    // Append new messages to the detail view
+                    appendNewDetailMessages(moreMessages);
+                } else {
+                    hasMoreMessages = false;
+                }
+            } catch (error) {
+                console.error('Error loading more messages:', error);
+            } finally {
+                isLoadingMore = false;
+                // Remove loading indicator
+                container.querySelector('.loading-indicator')?.remove();
+            }
+        }
+    }
+}
+
+// Function to load more messages
+async function loadMoreMessages(page) {
+    // Implement your logic to fetch more messages from the database
+    // This should return an array of messages
+    const startAfter = (page - 1) * MESSAGES_PER_PAGE;
+    // Add your database query here
+    return [];
+}
+
+// Function to load more messages for detail view
+async function loadMoreDetailMessages(email, page) {
+    // Implement your logic to fetch more messages for a specific conversation
+    const startAfter = (page - 1) * MESSAGES_PER_PAGE;
+    // Add your database query here
+    return [];
+}
+
+// Function to append new messages to the list
+function appendNewMessages(messages) {
+    const messagesList = document.querySelector('.messages-list');
+    // Remove end message if it exists
+    const endMessage = messagesList.querySelector('.end-message');
+    if (endMessage) {
+        endMessage.remove();
+    }
+    
+    // Group messages by email
+    const groupedMessages = groupMessagesByEmail(messages);
+    
+    // Append new messages
+    Object.entries(groupedMessages).forEach(([email, emailMessages]) => {
+        const latestMessage = emailMessages[0];
+        const messageCount = emailMessages.length;
+        const name = latestMessage.name || 'Unknown';
+        
+        const messageHtml = `
+            <div class="message-list-item" 
+                 onclick="showMessageDetails('${latestMessage.id}')"
+                 data-email="${email}">
+                <div class="msg-checkbox" style="display: none;">
+                    <input type="checkbox" 
+                           class="message-checkbox" 
+                           onclick="handleMessageSelect(event)"
+                           data-message-id="${latestMessage.id}"
+                           data-email="${email}">
+                </div>
+                <div class="message-list-content">
+                    <div class="message-list-avatar">
+                        ${getInitials(name)}
+                    </div>
+                    <div class="message-list-details">
+                        <div class="message-list-sender">${name}</div>
+                        <div class="message-list-time">${formatDate(latestMessage.createdAt, 'MMM D, YYYY')}</div>
+                        <div class="message-list-preview">
+                            <span>${latestMessage.message?.substring(0, 50)}${latestMessage.message?.length > 50 ? '...' : ''}</span>
+                            ${messageCount > 1 ? `<span class="message-count">+${messageCount - 1} more</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        messagesList.insertAdjacentHTML('beforeend', messageHtml);
+    });
+    
+    // Add end message back
+    if (hasMoreMessages) {
+        messagesList.insertAdjacentHTML('beforeend', '<div class="end-message">Loading more messages...</div>');
+    } else {
+        messagesList.insertAdjacentHTML('beforeend', '<div class="end-message">End of Messages</div>');
+    }
+}
+
+// Function to append new messages to detail view
+function appendNewDetailMessages(messages, isNewMessage = false) {
+    const messagesTimeline = document.querySelector('.messages-timeline');
+    // Remove end message if it exists
+    const endMessage = messagesTimeline.querySelector('.end-message');
+    if (endMessage) {
+        endMessage.remove();
+    }
+    
+    // Sort messages by date (oldest first for timeline view)
+    messages.sort((a, b) => a.createdAt?.toDate?.() - b.createdAt?.toDate?.());
+    
+    // Append new messages
+    messages.forEach(message => {
+        const messageHtml = `
+            <div class="message-thread-item" data-message-id="${message.id}">
+                ${isNewMessage ? '<div class="new-message-dot"></div>' : ''}
+                <div class="message-content">
+                    <div class="message-header">
+                        <div class="message-info">
+                            <span class="message-name">${message.name}</span>
+                            <span class="message-date">${formatDate(message.createdAt)}</span>
+                        </div>
+                    </div>
+                    <div class="message-body">
+                        ${message.message}
+                    </div>
+                </div>
+            </div>
+        `;
+        messagesTimeline.insertAdjacentHTML('beforeend', messageHtml);
+    });
+    
+    // Add end message back
+    if (hasMoreMessages) {
+        messagesTimeline.insertAdjacentHTML('beforeend', '<div class="end-message">Loading more messages...</div>');
+    } else {
+        messagesTimeline.insertAdjacentHTML('beforeend', '<div class="end-message">End of Messages</div>');
+    }
+    
+    // Scroll to the latest message
+    const lastMessage = messagesTimeline.lastElementChild;
+    if (lastMessage) {
+        lastMessage.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+// Initialize scroll listeners when the page loads
+document.addEventListener('DOMContentLoaded', initializeScrollListeners);
+
+// Function to handle bulk reply
+async function handleBulkReply() {
+    const selectedMessages = document.querySelectorAll('.message-checkbox:checked');
+    if (selectedMessages.length === 0) {
+        showNotification('No messages selected', 'error');
+        return;
+    }
+
+    try {
+        // Get all selected messages
+        const messages = Array.from(selectedMessages).map(checkbox => {
+            const messageId = checkbox.dataset.messageId;
+            return currentMessages.find(m => m.id === messageId);
+        }).filter(Boolean);
+
+        if (messages.length === 0) {
+            showNotification('No valid messages found', 'error');
+            return;
+        }
+
+        // Sort messages by date
+        messages.sort((a, b) => {
+            const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt);
+            const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt);
+            return dateA - dateB;
+        });
+
+        // Create the reply content with all selected messages
+        let replyBody = '\n\n----------------------------------------\n';
+        
+        for (const message of messages) {
+            // Get the message date
+            let messageDate;
+            if (message.createdAt?.toDate) {
+                messageDate = message.createdAt.toDate();
+            } else if (message.createdAt instanceof Date) {
+                messageDate = message.createdAt;
+            } else if (typeof message.createdAt === 'string') {
+                messageDate = new Date(message.createdAt);
+            } else {
+                messageDate = new Date();
+            }
+
+            // Format the date
+            const formattedDate = messageDate.toLocaleString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+
+            replyBody += `On ${formattedDate}, you wrote as ${message.name}:\n\n${message.message}\n\n----------------------------------------\n\n`;
+        }
+
+        // Get the email from the first selected message
+        const email = messages[0].email;
+        
+        // Create mailto link
+        const subject = `Re: Messages from ${messages[0].name}${messages.length > 1 ? ` and ${messages.length - 1} others` : ''}`;
+        const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(replyBody)}`;
+        
+        // Open email client
+        window.location.href = mailtoLink;
+
+        // Update reply status for all messages
+        for (const message of messages) {
+            const messageRef = doc(db, 'messages', message.id);
+            await updateDoc(messageRef, {
+                repliedAt: serverTimestamp()
+            });
+
+            // Update UI to show replied status
+            const replyBadge = document.querySelector(`[data-message-id="${message.id}"] .not-replied-badge`);
+            if (replyBadge) {
+                replyBadge.className = 'replied-badge';
+                replyBadge.textContent = `Replied ${formatDate(new Date(), 'MMM D, YYYY h:mm A')}`;
+            }
+        }
+
+        resetSelectionMode();
+    } catch (error) {
+        console.error('Error handling bulk reply:', error);
+        showNotification('Failed to send bulk reply', 'error');
+    }
+}
+
+// Add to window object
+window.handleBulkReply = handleBulkReply;
+
+// Update the real-time listener for new messages
+function setupMessageListener(email) {
+    const q = query(
+        collection(db, 'messages'),
+        where('email', '==', email),
+        orderBy('createdAt', 'desc')
+    );
+
+    return onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                const newMessage = {
+                    id: change.doc.id,
+                    ...change.doc.data()
+                };
+                
+                // Check if this is truly a new message (created after the listener was set up)
+                const messageTime = newMessage.createdAt?.toDate?.() || new Date(newMessage.createdAt);
+                const isNewMessage = messageTime > (window.lastMessageTime || 0);
+                
+                if (isNewMessage) {
+                    // Update the messages list
+                    currentMessages.unshift(newMessage);
+                    
+                    // If in detail view of this conversation, append the message
+                    const messagesTimeline = document.querySelector('.messages-timeline');
+                    if (messagesTimeline) {
+                        appendNewDetailMessages([newMessage], true);
+                    }
+                    
+                    // Update window.lastMessageTime
+                    window.lastMessageTime = messageTime;
+                }
+            }
+        });
+    });
 }
